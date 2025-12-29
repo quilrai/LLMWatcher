@@ -1,0 +1,637 @@
+/* ============ Dashboard - Feature Bars ============ */
+
+.feature-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feature-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feature-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.feature-name {
+  color: #555;
+}
+
+.feature-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.bar-track {
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.bar-fill.system { background: linear-gradient(90deg, #6366f1, #818cf8); }
+.bar-fill.tools { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.bar-fill.thinking { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+/* ============ Dashboard - Token Stats ============ */
+
+.token-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.token-stat {
+  text-align: center;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.token-stat .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.token-stat .label {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.token-stat.input .value { color: #6366f1; }
+.token-stat.output .value { color: #22c55e; }
+.token-stat.cache-read .value { color: #f59e0b; }
+.token-stat.cache-create .value { color: #ec4899; }
+
+/* ============ Dashboard - DLP Stats ============ */
+
+.dlp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dlp-stat-card {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.dlp-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #6366f1;
+}
+
+.dlp-stat-label {
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.dlp-detections-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dlp-detection-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.dlp-detection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dlp-detection-pattern {
+  font-weight: 600;
+  color: #333;
+}
+
+.dlp-detection-time {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.dlp-detection-value {
+  font-family: monospace;
+  font-size: 0.8rem;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.dlp-detection-value .redacted {
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.dlp-detection-value .original {
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* ============ Logs Table ============ */
+
+.logs-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.logs-table thead {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.logs-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #555;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.logs-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+}
+
+.logs-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.logs-table .col-time {
+  white-space: nowrap;
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.logs-table .col-backend {
+  text-transform: capitalize;
+}
+
+.logs-table .col-model {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.logs-table .col-tokens {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.logs-table .col-latency {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.json-btn {
+  padding: 4px 12px;
+  background: #e0e7ff;
+  color: #4338ca;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.json-btn:hover {
+  background: #c7d2fe;
+}
+
+/* ============ Settings Page ============ */
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.setting-row:last-of-type {
+  border-bottom: none;
+}
+
+.setting-info {
+  flex: 1;
+}
+
+.setting-label {
+  font-weight: 600;
+  color: #333;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.setting-description {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.port-input {
+  width: 100px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: monospace;
+  text-align: center;
+}
+
+.port-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.settings-status {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  display: none;
+}
+
+.settings-status.show {
+  display: block;
+}
+
+.settings-status.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.settings-status.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.settings-status.info {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+/* ============ Settings - DLP Patterns ============ */
+
+.settings-subheading {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+}
+
+.dlp-section {
+  margin-bottom: 24px;
+}
+
+.dlp-section:last-child {
+  margin-bottom: 0;
+}
+
+.dlp-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.dlp-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 12px 0;
+}
+
+.dlp-section-header .dlp-section-title {
+  margin-bottom: 0;
+}
+
+.dlp-pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dlp-pattern-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dlp-pattern-item:hover {
+  background: #f0f1f3;
+}
+
+.dlp-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #6366f1;
+}
+
+.dlp-pattern-name {
+  flex: 1;
+  font-weight: 500;
+  color: #333;
+}
+
+.dlp-pattern-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.dlp-pattern-badge.builtin {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.dlp-pattern-badge.keyword {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.dlp-pattern-badge.regex {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.dlp-pattern-delete {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.dlp-pattern-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.dlp-pattern-delete svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ============ How to Use Page ============ */
+
+.howto-subtitle {
+  color: #666;
+  margin-bottom: 24px;
+}
+
+.howto-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.howto-tool-btn {
+  padding: 12px 20px;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.howto-tool-btn:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.howto-tool-btn.active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.howto-instructions {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.howto-instructions h3 {
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.howto-instructions p {
+  margin-bottom: 12px;
+  color: #555;
+  line-height: 1.6;
+}
+
+.howto-instructions code {
+  display: block;
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 16px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============ How to Use - Shell Tabs ============ */
+
+.shell-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.shell-tab {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.shell-tab:hover {
+  color: #6366f1;
+}
+
+.shell-tab.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+.shell-tab.is-set::after {
+  content: '\2713';
+  margin-left: 6px;
+  color: #22c55e;
+  font-size: 0.8rem;
+}
+
+.shell-tab-content {
+  display: none;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 0 0 8px 8px;
+}
+
+.shell-tab-content.active {
+  display: block;
+}
+
+.shell-tab-content code {
+  margin: 12px 0;
+}
+
+.shell-tab-content .shell-action-btn {
+  margin-top: 8px;
+}
+
+.shell-config-path {
+  font-weight: 400;
+  color: #888;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.shell-set-status {
+  display: none;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.shell-set-status.show {
+  display: block;
+}
+
+.shell-set-status.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.shell-set-status.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ============ CA Certificate Display ============ */
+
+.ca-cert-content {
+  margin-top: 16px;
+  padding: 16px;
+  background: #1a1a2e;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.ca-cert-content pre {
+  margin: 0;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #a0a0a0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* How To - Install Steps */
+.install-steps {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.install-steps code {
+  display: block;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

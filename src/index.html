@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="base.css" />
+    <link rel="stylesheet" href="components.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <link rel="stylesheet" href="dark-mode.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Gateway</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <div class="app-container">
+      <!-- Sidebar -->
+      <nav class="sidebar">
+        <div class="sidebar-header">
+          <h2>Agent Gateway <a href="https://quilr.ai" target="_blank" style="font-size: 0.6em; font-weight: normal; color: inherit; opacity: 0.7; text-decoration: none;">by Quilr</a></h2>
+        </div>
+        <ul class="nav-tabs">
+          <li class="nav-item active" data-tab="home">
+            <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span>
+            Dashboard
+          </li>
+          <li class="nav-item" data-tab="logs">
+            <span class="nav-icon"><i data-lucide="file-text"></i></span>
+            Message Logs
+          </li>
+          <li class="nav-item" data-tab="settings">
+            <span class="nav-icon"><i data-lucide="settings"></i></span>
+            Settings
+          </li>
+          <li class="nav-item" data-tab="howto">
+            <span class="nav-icon"><i data-lucide="book-open"></i></span>
+            How to use
+          </li>
+        </ul>
+        <div class="sidebar-footer">
+          <div class="proxy-status">
+            <span class="status-dot" id="proxy-status-dot"></span>
+            <span id="proxy-status-text">Proxy: localhost:8008</span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="content">
+        <!-- Dashboard Tab -->
+        <div id="home-tab" class="tab-content active">
+          <div class="page-header">
+            <div class="header-filters">
+              <select id="backend-select" class="filter-select">
+                <option value="all">All Backends</option>
+              </select>
+              <select id="time-select" class="filter-select">
+                <option value="1h">1 Hour</option>
+                <option value="6h">6 Hours</option>
+                <option value="1d">1 Day</option>
+                <option value="7d">7 Days</option>
+              </select>
+            </div>
+            <button id="refresh-btn" class="icon-btn" title="Refresh">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+
+          <div id="dashboard-content">
+            <p class="loading">Loading...</p>
+          </div>
+        </div>
+
+        <!-- Message Logs Tab -->
+        <div id="logs-tab" class="tab-content">
+          <div class="page-header">
+            <div class="header-filters">
+              <select id="logs-backend-select" class="filter-select">
+                <option value="all">All Backends</option>
+              </select>
+              <select id="logs-time-select" class="filter-select">
+                <option value="1h">1 Hour</option>
+                <option value="6h">6 Hours</option>
+                <option value="1d">1 Day</option>
+                <option value="7d">7 Days</option>
+              </select>
+            </div>
+            <button id="logs-refresh-btn" class="icon-btn" title="Refresh">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+          <div id="logs-content">
+            <p class="loading">Loading...</p>
+          </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+          <h1>Settings</h1>
+
+          <div class="settings-section">
+            <div class="card">
+              <div class="card-header">Reverse Proxy Server</div>
+              <div class="card-body">
+                <p class="setting-description" style="margin-bottom: 12px;">For tools that support custom base URLs (Claude Code, Codex CLI).</p>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <label for="port-input" class="setting-label">Port Number</label>
+                    <p class="setting-description">Default: 8008. Use with ANTHROPIC_BASE_URL or OPENAI_BASE_URL.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="number" id="port-input" class="port-input" min="1024" max="65535" value="8008" />
+                    <button id="save-port-btn" class="btn btn-primary">Save</button>
+                  </div>
+                </div>
+                <div id="settings-status" class="settings-status"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="card">
+              <div class="card-header">MITM Proxy (for Cursor)</div>
+              <div class="card-body">
+                <p class="setting-description" style="margin-bottom: 12px;">For tools that don't support custom base URLs. Intercepts HTTPS traffic via HTTP_PROXY.</p>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <label for="mitm-port-input" class="setting-label">MITM Port Number</label>
+                    <p class="setting-description">Default: 8888. Set HTTP_PROXY=http://127.0.0.1:8888 for Cursor.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="number" id="mitm-port-input" class="port-input" min="1024" max="65535" value="8888" />
+                    <button id="save-mitm-port-btn" class="btn btn-primary">Save</button>
+                  </div>
+                </div>
+                <div id="mitm-settings-status" class="settings-status"></div>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border-color);" />
+
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <label class="setting-label">CA Certificate</label>
+                    <p class="setting-description">Install this certificate to enable HTTPS interception. Required for Cursor.</p>
+                    <p class="setting-description" id="ca-cert-path" style="font-family: monospace; font-size: 11px; opacity: 0.7;"></p>
+                  </div>
+                  <div class="setting-control" style="flex-direction: column; gap: 8px;">
+                    <button id="install-ca-btn" class="btn btn-primary">
+                      <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+                      Install Cert
+                    </button>
+                    <button id="copy-ca-path-btn" class="btn btn-secondary">
+                      <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                      Copy Path
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="card">
+              <div class="card-header">DLP Settings</div>
+              <div class="card-body">
+                <h3 class="settings-subheading">Pattern based DLP</h3>
+
+                <div class="dlp-section">
+                  <h4 class="dlp-section-title">Built-in Patterns</h4>
+                  <div class="dlp-pattern-list" id="builtin-patterns">
+                    <label class="dlp-pattern-item">
+                      <input type="checkbox" id="dlp-api-keys" class="dlp-checkbox" />
+                      <span class="dlp-pattern-name">API Keys</span>
+                      <span class="dlp-pattern-badge builtin">Built-in</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="dlp-section">
+                  <div class="dlp-section-header">
+                    <h4 class="dlp-section-title">Custom Patterns</h4>
+                    <button id="add-pattern-btn" class="btn btn-secondary btn-sm">
+                      <i data-lucide="plus"></i>
+                      Add Pattern
+                    </button>
+                  </div>
+                  <div class="dlp-pattern-list" id="custom-patterns">
+                    <p class="empty-text">No custom patterns added</p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- How to use Tab -->
+        <div id="howto-tab" class="tab-content">
+          <h1>How to use</h1>
+          <p class="howto-subtitle">Select a tool to see setup instructions for using it with this proxy.</p>
+
+          <div class="howto-tools">
+            <button class="howto-tool-btn" data-tool="claude-code">Claude Code CLI</button>
+            <button class="howto-tool-btn" data-tool="gemini">Gemini CLI</button>
+            <button class="howto-tool-btn" data-tool="codex">Codex CLI</button>
+            <button class="howto-tool-btn" data-tool="antigravity">Antigravity</button>
+            <button class="howto-tool-btn" data-tool="cursor">Cursor</button>
+            <button class="howto-tool-btn" data-tool="vscode">VS Code</button>
+          </div>
+
+          <div id="howto-instructions" class="howto-instructions">
+            <p class="empty-text">Select a tool above to see instructions.</p>
+          </div>
+        </div>
+
+        <!-- Add Pattern Modal -->
+        <div id="add-pattern-modal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Add Pattern</h3>
+              <button class="modal-close" id="close-pattern-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="pattern-name">Name</label>
+                <input type="text" id="pattern-name" class="form-input" placeholder="e.g., AWS Secrets" />
+              </div>
+              <div class="form-group">
+                <label>Type</label>
+                <div class="radio-group">
+                  <label class="radio-item">
+                    <input type="radio" name="pattern-type" value="keyword" checked />
+                    <span>Keywords</span>
+                  </label>
+                  <label class="radio-item">
+                    <input type="radio" name="pattern-type" value="regex" />
+                    <span>Regex</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="pattern-values">Patterns <span class="form-hint">(one per line)</span></label>
+                <textarea id="pattern-values" class="form-textarea" rows="4" placeholder="Enter keywords or regex patterns, one per line"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="cancel-pattern-btn">Cancel</button>
+              <button class="btn btn-primary" id="save-pattern-btn">Save</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

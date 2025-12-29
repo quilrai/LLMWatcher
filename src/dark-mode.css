@@ -1,0 +1,388 @@
+/* ============ Dark Mode ============ */
+
+@media (prefers-color-scheme: dark) {
+  /* Base */
+  :root {
+    color: #e8e8e8;
+    background-color: #0f0f1a;
+  }
+
+  .content {
+    background: #0f0f1a;
+  }
+
+  /* Filters & Buttons */
+  .filter-select {
+    background: #1a1a2e;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .filter-select:focus {
+    border-color: #818cf8;
+  }
+
+  .icon-btn {
+    background: #6366f1;
+  }
+
+  .icon-btn:hover {
+    background: #818cf8;
+  }
+
+  /* Cards */
+  .card {
+    background: #1a1a2e;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .card-header {
+    border-bottom-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  /* Token Stats */
+  .token-stat {
+    background: #12121f;
+  }
+
+  .token-stat .value {
+    color: #fff;
+  }
+
+  .bar-track {
+    background: #2a2a3e;
+  }
+
+  .feature-name {
+    color: #aaa;
+  }
+
+  .feature-value {
+    color: #fff;
+  }
+
+  /* Logs Table */
+  .logs-table-container {
+    background: #1a1a2e;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .logs-table thead {
+    background: #12121f;
+    border-bottom-color: #2a2a3e;
+  }
+
+  .logs-table th {
+    color: #aaa;
+  }
+
+  .logs-table td {
+    border-bottom-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .logs-table tbody tr:hover {
+    background: #12121f;
+  }
+
+  .logs-table .col-time {
+    color: #888;
+  }
+
+  .json-btn {
+    background: #2a2a4e;
+    color: #818cf8;
+  }
+
+  .json-btn:hover {
+    background: #3a3a5e;
+  }
+
+  /* JSON Modal */
+  .json-modal-content {
+    background: #1a1a2e;
+  }
+
+  .json-modal-header {
+    border-bottom-color: #2a2a3e;
+  }
+
+  .json-modal-header h3 {
+    color: #e8e8e8;
+  }
+
+  .json-modal-close {
+    color: #888;
+  }
+
+  .json-modal-close:hover {
+    color: #e8e8e8;
+  }
+
+  .json-modal-body {
+    background: #12121f;
+    color: #e8e8e8;
+  }
+
+  /* Settings */
+  .setting-row {
+    border-bottom-color: #2a2a3e;
+  }
+
+  .setting-label {
+    color: #e8e8e8;
+  }
+
+  .setting-description {
+    color: #888;
+  }
+
+  .port-input {
+    background: #12121f;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .port-input:focus {
+    border-color: #818cf8;
+  }
+
+  .btn-secondary {
+    background: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .btn-secondary:hover {
+    background: #3a3a4e;
+  }
+
+  .btn-secondary:disabled {
+    background: #1a1a2e;
+    color: #666;
+  }
+
+  .settings-status.success {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .settings-status.error {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .settings-status.info {
+    background: #2a2a4e;
+    color: #a5b4fc;
+  }
+
+  /* DLP Settings */
+  .settings-subheading {
+    color: #e8e8e8;
+  }
+
+  .dlp-section-title {
+    color: #aaa;
+  }
+
+  .dlp-pattern-item {
+    background: #12121f;
+  }
+
+  .dlp-pattern-item:hover {
+    background: #1a1a2e;
+  }
+
+  .dlp-pattern-name {
+    color: #e8e8e8;
+  }
+
+  .dlp-pattern-badge.builtin {
+    background: #2a2a4e;
+    color: #a5b4fc;
+  }
+
+  .dlp-pattern-badge.keyword {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .dlp-pattern-badge.regex {
+    background: #451a03;
+    color: #fcd34d;
+  }
+
+  .dlp-pattern-delete:hover {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .empty-text {
+    color: #666;
+  }
+
+  /* Modal */
+  .modal-content {
+    background: #1a1a2e;
+  }
+
+  .modal-header {
+    border-bottom-color: #2a2a3e;
+  }
+
+  .modal-header h3 {
+    color: #e8e8e8;
+  }
+
+  .modal-close {
+    color: #888;
+  }
+
+  .modal-close:hover {
+    color: #e8e8e8;
+  }
+
+  .modal-footer {
+    border-top-color: #2a2a3e;
+  }
+
+  /* Forms */
+  .form-group label {
+    color: #e8e8e8;
+  }
+
+  .form-input {
+    background: #12121f;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .form-input:focus {
+    border-color: #818cf8;
+  }
+
+  .form-textarea {
+    background: #12121f;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .form-textarea:focus {
+    border-color: #818cf8;
+  }
+
+  .radio-item span {
+    color: #e8e8e8;
+  }
+
+  /* DLP Stats */
+  .dlp-stat-card {
+    background: #12121f;
+  }
+
+  .dlp-stat-label {
+    color: #888;
+  }
+
+  .dlp-detection-item {
+    background: #12121f;
+  }
+
+  .dlp-detection-pattern {
+    color: #e8e8e8;
+  }
+
+  .dlp-detection-value {
+    background: #1a1a2e;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .dlp-detection-value .redacted {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .dlp-detection-value .original {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  /* How to Use */
+  .howto-subtitle {
+    color: #888;
+  }
+
+  .howto-tool-btn {
+    background: #1a1a2e;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .howto-tool-btn:hover {
+    border-color: #818cf8;
+    color: #818cf8;
+  }
+
+  .howto-tool-btn.active {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+  }
+
+  .howto-instructions {
+    background: #1a1a2e;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .howto-instructions h3 {
+    color: #e8e8e8;
+  }
+
+  .howto-instructions p {
+    color: #aaa;
+  }
+
+  .howto-instructions code {
+    background: #12121f;
+    border-color: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  /* Shell Tabs */
+  .shell-tabs {
+    border-bottom-color: #2a2a3e;
+  }
+
+  .shell-tab {
+    color: #888;
+  }
+
+  .shell-tab:hover {
+    color: #818cf8;
+  }
+
+  .shell-tab.active {
+    color: #818cf8;
+    border-bottom-color: #818cf8;
+  }
+
+  .shell-tab-content {
+    background: #12121f;
+  }
+
+  .shell-config-path {
+    color: #666;
+  }
+
+  .shell-set-status.success {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .shell-set-status.error {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+}
