@@ -1,7 +1,7 @@
 // Database operations and schema management
 
 use crate::dlp::DlpDetection;
-use crate::dlp_pattern_config::{DB_PATH, DEFAULT_MITM_PORT, DEFAULT_PORT};
+use crate::dlp_pattern_config::{DB_PATH, DEFAULT_PORT};
 use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -189,6 +189,143 @@ impl Database {
 
         Ok(())
     }
+
+    // ========================================================================
+    // Cursor Hooks Methods
+    // ========================================================================
+
+    /// Log a cursor hook request (creates new entry)
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_cursor_hook_request(
+        &self,
+        generation_id: &str,
+        endpoint_name: &str,
+        model: &str,
+        input_tokens: i32,
+        output_tokens: i32,
+        request_body: &str,
+        response_body: &str,
+        response_status: u16,
+        extra_metadata: Option<&str>,
+    ) -> Result<i64, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        // Check if entry already exists for this generation_id
+        let existing_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM requests WHERE json_extract(extra_metadata, '$.generation_id') = ?1 AND backend = 'cursor-hooks'",
+                rusqlite::params![generation_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(id) = existing_id {
+            // Update existing entry
+            conn.execute(
+                "UPDATE requests SET
+                    input_tokens = input_tokens + ?1,
+                    response_status = ?2
+                 WHERE id = ?3",
+                rusqlite::params![input_tokens, response_status, id],
+            )?;
+            return Ok(id);
+        }
+
+        // Create new entry
+        conn.execute(
+            "INSERT INTO requests (
+                timestamp, backend, endpoint_name, method, path, model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                latency_ms, has_system_prompt, has_tools, has_thinking, stop_reason,
+                user_message_count, assistant_message_count,
+                response_status, is_streaming, request_body, response_body, extra_metadata
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+            rusqlite::params![
+                timestamp,
+                "cursor-hooks",
+                endpoint_name,
+                "POST",
+                "/cursor_hook",
+                if model.is_empty() { None } else { Some(model) },
+                input_tokens,
+                output_tokens,
+                0, // cache_read_tokens
+                0, // cache_creation_tokens
+                0, // latency_ms (not applicable for hooks)
+                0, // has_system_prompt
+                0, // has_tools
+                0, // has_thinking
+                None::<String>, // stop_reason
+                1, // user_message_count (prompt)
+                0, // assistant_message_count
+                response_status,
+                0, // is_streaming
+                request_body,
+                response_body,
+                extra_metadata,
+            ],
+        )?;
+
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Update cursor hook output tokens and response body by generation_id
+    pub fn update_cursor_hook_output(
+        &self,
+        generation_id: &str,
+        output_word_count: i32,
+        response_text: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+
+        // Find the request by generation_id in extra_metadata
+        let existing: Option<(i64, i32)> = conn
+            .query_row(
+                "SELECT id, output_tokens FROM requests WHERE json_extract(extra_metadata, '$.generation_id') = ?1 AND backend = 'cursor-hooks'",
+                rusqlite::params![generation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some((id, current_output)) = existing {
+            let new_output = current_output + output_word_count;
+
+            if let Some(text) = response_text {
+                conn.execute(
+                    "UPDATE requests SET output_tokens = ?1, response_body = ?2, assistant_message_count = 1 WHERE id = ?3",
+                    rusqlite::params![new_output, text, id],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE requests SET output_tokens = ?1 WHERE id = ?2",
+                    rusqlite::params![new_output, id],
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add thinking tokens to cursor hook output by generation_id
+    pub fn add_cursor_hook_thinking_tokens(
+        &self,
+        generation_id: &str,
+        thinking_word_count: i32,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+
+        // Find and update the request
+        conn.execute(
+            "UPDATE requests SET
+                output_tokens = output_tokens + ?1,
+                has_thinking = 1
+             WHERE json_extract(extra_metadata, '$.generation_id') = ?2 AND backend = 'cursor-hooks'",
+            rusqlite::params![thinking_word_count, generation_id],
+        )?;
+
+        Ok(())
+    }
 }
 
 // Port management helpers
@@ -227,38 +364,3 @@ pub fn save_port_to_db(port: u16) -> Result<(), String> {
     Ok(())
 }
 
-// MITM Port management helpers
-
-pub fn get_mitm_port_from_db() -> u16 {
-    let conn = match Connection::open(DB_PATH) {
-        Ok(c) => c,
-        Err(_) => return DEFAULT_MITM_PORT,
-    };
-
-    // Ensure settings table exists
-    let _ = conn.execute(
-        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-        [],
-    );
-
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = 'mitm_proxy_port'",
-        [],
-        |row| row.get::<_, String>(0),
-    )
-    .ok()
-    .and_then(|v| v.parse().ok())
-    .unwrap_or(DEFAULT_MITM_PORT)
-}
-
-pub fn save_mitm_port_to_db(port: u16) -> Result<(), String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('mitm_proxy_port', ?1)",
-        rusqlite::params![port.to_string()],
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
-}

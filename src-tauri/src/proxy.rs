@@ -1,6 +1,7 @@
 // HTTP Proxy Server and Handler
 
 use crate::backends::{Backend, ClaudeBackend, CodexBackend};
+use crate::cursor_hooks::create_cursor_hooks_router;
 use crate::database::Database;
 use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction};
 use crate::dlp_pattern_config::DB_PATH;
@@ -360,10 +361,14 @@ pub async fn start_proxy_server() {
             .fallback(proxy_handler)
             .with_state(codex_state);
 
+        // Create cursor hooks router
+        let cursor_hooks_router = create_cursor_hooks_router(db.clone());
+
         let app = Router::new()
             .route("/", get(health_handler))
             .nest("/claude", claude_router)
-            .nest("/codex", codex_router);
+            .nest("/codex", codex_router)
+            .nest("/cursor_hook", cursor_hooks_router);
 
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let listener = match TcpListener::bind(addr).await {

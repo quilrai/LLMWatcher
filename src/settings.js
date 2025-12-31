@@ -1,8 +1,5 @@
 import { invoke, getCurrentPort, setCurrentPort, escapeHtml } from './utils.js';
 
-// Current MITM port
-let currentMitmPort = 8888;
-
 // ============ Status Display ============
 
 // Show status message in settings
@@ -97,131 +94,6 @@ async function savePortSetting() {
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = 'Save';
-  }
-}
-
-// ============ MITM Proxy Settings ============
-
-// Load MITM port setting from backend
-async function loadMitmPortSetting() {
-  try {
-    const port = await invoke('get_mitm_port_setting');
-    currentMitmPort = port;
-    const portInput = document.getElementById('mitm-port-input');
-    if (portInput) {
-      portInput.value = port;
-    }
-  } catch (error) {
-    console.error('Failed to load MITM port setting:', error);
-  }
-}
-
-// Save MITM port setting and restart proxy
-async function saveMitmPortSetting() {
-  const portInput = document.getElementById('mitm-port-input');
-  const saveBtn = document.getElementById('save-mitm-port-btn');
-  const port = parseInt(portInput.value, 10);
-
-  // Validate
-  if (isNaN(port) || port < 1024 || port > 65535) {
-    showSettingsStatus('Port must be between 1024 and 65535', 'error', 'mitm-settings-status');
-    return;
-  }
-
-  // Skip if port hasn't changed
-  if (port === currentMitmPort) {
-    showSettingsStatus('Port unchanged', 'info', 'mitm-settings-status');
-    return;
-  }
-
-  saveBtn.disabled = true;
-  saveBtn.textContent = 'Saving...';
-
-  try {
-    // Save the port setting
-    await invoke('save_mitm_port_setting', { port });
-    currentMitmPort = port;
-
-    // Restart the MITM proxy server
-    showSettingsStatus('Restarting MITM proxy server...', 'info', 'mitm-settings-status');
-    await invoke('restart_mitm_proxy');
-
-    // Wait for server to restart
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    showSettingsStatus(`MITM Proxy now running on port ${port}`, 'success', 'mitm-settings-status');
-  } catch (error) {
-    showSettingsStatus(`Failed: ${error}`, 'error', 'mitm-settings-status');
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Save';
-  }
-}
-
-// ============ CA Certificate ============
-
-// Load CA certificate info
-async function loadCaCertInfo() {
-  try {
-    const exists = await invoke('ca_exists');
-    const pathEl = document.getElementById('ca-cert-path');
-
-    if (exists) {
-      const path = await invoke('get_ca_cert_path');
-      if (pathEl) {
-        pathEl.textContent = path;
-      }
-    } else {
-      if (pathEl) {
-        pathEl.textContent = 'Certificate will be generated on first use';
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load CA cert info:', error);
-  }
-}
-
-// Copy CA path to clipboard
-async function copyCaPath() {
-  try {
-    const path = await invoke('get_ca_cert_path');
-    await navigator.clipboard.writeText(path);
-
-    const btn = document.getElementById('copy-ca-path-btn');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i data-lucide="check" style="width: 14px; height: 14px;"></i> Copied!';
-    lucide.createIcons();
-
-    setTimeout(() => {
-      btn.innerHTML = originalText;
-      lucide.createIcons();
-    }, 2000);
-  } catch (error) {
-    console.error('Failed to copy CA path:', error);
-  }
-}
-
-// Open CA certificate for installation
-async function installCaCert() {
-  const btn = document.getElementById('install-ca-btn');
-  const originalText = btn.innerHTML;
-
-  try {
-    btn.innerHTML = '<i data-lucide="loader" style="width: 14px; height: 14px;"></i> Opening...';
-    lucide.createIcons();
-
-    await invoke('open_ca_cert');
-
-    btn.innerHTML = '<i data-lucide="check" style="width: 14px; height: 14px;"></i> Opened!';
-    lucide.createIcons();
-
-    setTimeout(() => {
-      btn.innerHTML = originalText;
-      lucide.createIcons();
-    }, 2000);
-  } catch (error) {
-    alert(`Failed to open certificate: ${error}`);
-    btn.innerHTML = originalText;
-    lucide.createIcons();
   }
 }
 
@@ -429,38 +301,8 @@ export function initSettings() {
     });
   }
 
-  // MITM proxy port settings
-  const saveMitmBtn = document.getElementById('save-mitm-port-btn');
-  const mitmPortInput = document.getElementById('mitm-port-input');
-
-  if (saveMitmBtn) {
-    saveMitmBtn.addEventListener('click', saveMitmPortSetting);
-  }
-
-  if (mitmPortInput) {
-    mitmPortInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        saveMitmPortSetting();
-      }
-    });
-  }
-
-  // CA certificate buttons
-  const installCaBtn = document.getElementById('install-ca-btn');
-  const copyPathBtn = document.getElementById('copy-ca-path-btn');
-
-  if (installCaBtn) {
-    installCaBtn.addEventListener('click', installCaCert);
-  }
-
-  if (copyPathBtn) {
-    copyPathBtn.addEventListener('click', copyCaPath);
-  }
-
   // Load settings
   loadPortSetting();
-  loadMitmPortSetting();
-  loadCaCertInfo();
 
   // Initialize DLP settings
   initDlpSettings();

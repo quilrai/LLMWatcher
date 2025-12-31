@@ -41,18 +41,6 @@ flate2 = "1.0"
 # Hex encoding
 hex = "0.4"
 
-# Protobuf
-prost = "0.13"
-
 # DLP regex matching
 regex = "1"
-
-# MITM HTTP Proxy
-hudsucker = { version = "0.24", features = ["rcgen-ca", "http2"] }
-tokio-rustls = "0.26"
-rustls-pemfile = "2"
-http-body-util = "0.1"
-async-trait = "0.1"
-dirs = "5"
-time = "0.3"
 

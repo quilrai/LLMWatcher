@@ -363,96 +363,6 @@ fn redact_text(
     result
 }
 
-/// Apply DLP redaction to binary data (e.g., protobuf)
-/// Works by finding pattern matches in the UTF-8 representation and replacing in-place
-/// Returns the modified bytes and the replacements map for unredaction
-pub fn apply_dlp_redaction_to_bytes(data: &[u8]) -> (Vec<u8>, HashMap<String, String>, Vec<DlpDetection>) {
-    let patterns = get_enabled_dlp_patterns();
-
-    if patterns.is_empty() {
-        return (data.to_vec(), HashMap::new(), Vec::new());
-    }
-
-    let mut result = data.to_vec();
-    let mut replacements: HashMap<String, String> = HashMap::new();
-    let mut detections: Vec<DlpDetection> = Vec::new();
-    let mut counter = 1u32;
-
-    // Convert to lossy UTF-8 for pattern matching
-    let text = String::from_utf8_lossy(data);
-
-    for (name, pattern_type, regexes) in &patterns {
-        for regex in regexes {
-            // Find all matches with their byte positions
-            for mat in regex.find_iter(&text) {
-                let matched = mat.as_str();
-                let start = mat.start();
-                let end = mat.end();
-
-                // Verify the matched bytes are valid UTF-8 (not replacement chars from lossy conversion)
-                if let Ok(original_str) = std::str::from_utf8(&data[start..end]) {
-                    if original_str == matched {
-                        // Create same-length placeholder
-                        let (placeholder, is_new) = replacements
-                            .iter()
-                            .find(|(_, v)| *v == matched)
-                            .map(|(k, _)| (k.clone(), false))
-                            .unwrap_or_else(|| {
-                                let p = create_placeholder(counter, matched);
-                                replacements.insert(p.clone(), matched.to_string());
-                                counter += 1;
-                                (p, true)
-                            });
-
-                        if is_new {
-                            detections.push(DlpDetection {
-                                pattern_name: name.clone(),
-                                pattern_type: pattern_type.clone(),
-                                original_value: matched.to_string(),
-                                placeholder: placeholder.clone(),
-                                message_index: None,
-                            });
-                        }
-
-                        // Replace in-place (same length guaranteed)
-                        result[start..end].copy_from_slice(placeholder.as_bytes());
-                    }
-                }
-            }
-        }
-    }
-
-    (result, replacements, detections)
-}
-
-/// Apply DLP unredaction to binary data
-pub fn apply_dlp_unredaction_to_bytes(data: &[u8], replacements: &HashMap<String, String>) -> Vec<u8> {
-    if replacements.is_empty() {
-        return data.to_vec();
-    }
-
-    let mut result = data.to_vec();
-
-    // Replace all placeholders back with original values
-    for (placeholder, original) in replacements {
-        let placeholder_bytes = placeholder.as_bytes();
-        let original_bytes = original.as_bytes();
-
-        // Find and replace all occurrences
-        let mut i = 0;
-        while i + placeholder_bytes.len() <= result.len() {
-            if &result[i..i + placeholder_bytes.len()] == placeholder_bytes {
-                result[i..i + placeholder_bytes.len()].copy_from_slice(original_bytes);
-                i += placeholder_bytes.len();
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    result
-}
-
 /// Apply DLP unredaction to response body
 pub fn apply_dlp_unredaction(body: &str, replacements: &HashMap<String, String>) -> String {
     if replacements.is_empty() {
@@ -467,4 +377,44 @@ pub fn apply_dlp_unredaction(body: &str, replacements: &HashMap<String, String>)
     }
 
     result
+}
+
+/// Check text for DLP patterns without redaction (detection only)
+/// Used by Cursor hooks to detect and block sensitive data
+pub fn check_dlp_patterns(text: &str) -> Vec<DlpDetection> {
+    let patterns = get_enabled_dlp_patterns();
+
+    if patterns.is_empty() {
+        return Vec::new();
+    }
+
+    let mut detections: Vec<DlpDetection> = Vec::new();
+    let mut seen_values: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (name, pattern_type, regexes) in patterns {
+        for regex in regexes {
+            let matches: Vec<String> = regex
+                .find_iter(text)
+                .map(|m| m.as_str().to_string())
+                .collect();
+
+            for matched in matches {
+                // Skip duplicates
+                if seen_values.contains(&matched) {
+                    continue;
+                }
+                seen_values.insert(matched.clone());
+
+                detections.push(DlpDetection {
+                    pattern_name: name.clone(),
+                    pattern_type: pattern_type.clone(),
+                    original_value: matched,
+                    placeholder: String::new(), // Not used for detection-only
+                    message_index: None,
+                });
+            }
+        }
+    }
+
+    detections
 }

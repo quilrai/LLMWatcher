@@ -2,7 +2,6 @@
 
 pub const DB_PATH: &str = "proxy_requests.db";
 pub const DEFAULT_PORT: u16 = 8008;
-pub const DEFAULT_MITM_PORT: u16 = 8888;
 
 // Built-in API key patterns
 pub const BUILTIN_API_KEY_PATTERNS: &[&str] = &[

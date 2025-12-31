@@ -1,9 +1,8 @@
 // Stats and Monitoring Tauri Commands
 
-use crate::ca;
-use crate::database::{get_mitm_port_from_db, get_port_from_db, save_mitm_port_to_db, save_port_to_db};
+use crate::database::{get_port_from_db, save_port_to_db};
 use crate::dlp_pattern_config::DB_PATH;
-use crate::{MITM_PROXY_PORT, MITM_RESTART_SENDER, PROXY_PORT, RESTART_SENDER};
+use crate::{PROXY_PORT, RESTART_SENDER};
 use rusqlite::Connection;
 use serde::Serialize;
 
@@ -90,6 +89,9 @@ fn get_cutoff_timestamp(hours: i64) -> String {
     cutoff.to_rfc3339()
 }
 
+// Endpoint filter to include both proxy and cursor hook requests
+const ENDPOINT_FILTER: &str = "endpoint_name IN ('Messages', 'CursorChat', 'CursorTab')";
+
 #[tauri::command]
 pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<DashboardData, String> {
     let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
@@ -104,15 +106,15 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
         format!(" AND backend = '{}'", backend.replace('\'', "''"))
     };
 
-    // Get model stats (Messages endpoint only)
+    // Get model stats
     let mut model_stmt = conn
         .prepare(&format!(
             "SELECT COALESCE(model, 'unknown') as model, COUNT(*) as count
              FROM requests
-             WHERE endpoint_name = 'Messages' AND model IS NOT NULL AND timestamp >= ?1{}
+             WHERE {} AND model IS NOT NULL AND timestamp >= ?1{}
              GROUP BY model
              ORDER BY count DESC",
-            backend_filter
+            ENDPOINT_FILTER, backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -137,8 +139,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     COALESCE(SUM(has_thinking), 0),
                     COUNT(*)
                  FROM requests
-                 WHERE endpoint_name = 'Messages' AND timestamp >= ?1{}",
-                backend_filter
+                 WHERE {} AND timestamp >= ?1{}",
+                ENDPOINT_FILTER, backend_filter
             ),
             [&cutoff_ts],
             |row| {
@@ -167,8 +169,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     COALESCE(SUM(cache_read_tokens), 0),
                     COALESCE(SUM(cache_creation_tokens), 0)
                  FROM requests
-                 WHERE endpoint_name = 'Messages' AND timestamp >= ?1{}",
-                backend_filter
+                 WHERE {} AND timestamp >= ?1{}",
+                ENDPOINT_FILTER, backend_filter
             ),
             [&cutoff_ts],
             |row| {
@@ -194,10 +196,10 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     cache_read_tokens, cache_creation_tokens, latency_ms,
                     COALESCE(stop_reason, 'unknown'), has_thinking
              FROM requests
-             WHERE endpoint_name = 'Messages' AND timestamp >= ?1{}
+             WHERE {} AND timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 20",
-            backend_filter
+            ENDPOINT_FILTER, backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -225,10 +227,10 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
         .prepare(&format!(
             "SELECT id, latency_ms
              FROM requests
-             WHERE endpoint_name = 'Messages' AND latency_ms > 0 AND timestamp >= ?1{}
+             WHERE {} AND latency_ms > 0 AND timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 50",
-            backend_filter
+            ENDPOINT_FILTER, backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -247,8 +249,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
     let total_requests: i64 = conn
         .query_row(
             &format!(
-                "SELECT COUNT(*) FROM requests WHERE endpoint_name = 'Messages' AND timestamp >= ?1{}",
-                backend_filter
+                "SELECT COUNT(*) FROM requests WHERE {} AND timestamp >= ?1{}",
+                ENDPOINT_FILTER, backend_filter
             ),
             [&cutoff_ts],
             |row| row.get(0),
@@ -260,8 +262,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
             &format!(
                 "SELECT COALESCE(AVG(latency_ms), 0)
                  FROM requests
-                 WHERE endpoint_name = 'Messages' AND latency_ms > 0 AND timestamp >= ?1{}",
-                backend_filter
+                 WHERE {} AND latency_ms > 0 AND timestamp >= ?1{}",
+                ENDPOINT_FILTER, backend_filter
             ),
             [&cutoff_ts],
             |row| row.get(0),
@@ -314,10 +316,10 @@ pub fn get_message_logs(time_range: String, backend: String) -> Result<Vec<Messa
             "SELECT id, timestamp, backend, COALESCE(model, 'unknown'),
                     input_tokens, output_tokens, latency_ms, request_body, response_body
              FROM requests
-             WHERE endpoint_name = 'Messages' AND timestamp >= ?1{}
+             WHERE {} AND timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 100",
-            backend_filter
+            ENDPOINT_FILTER, backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -601,100 +603,6 @@ fn update_shell_config(path: &str, export_line: &str, env_var: &str) -> Result<(
 
     for line in new_lines {
         writeln!(file, "{}", line).map_err(|e| format!("Failed to write: {}", e))?;
-    }
-
-    Ok(())
-}
-
-// MITM Proxy Commands
-
-#[tauri::command]
-pub fn get_mitm_port_setting() -> u16 {
-    get_mitm_port_from_db()
-}
-
-#[tauri::command]
-pub fn save_mitm_port_setting(port: u16) -> Result<(), String> {
-    // Validate port range
-    if !(1024..=65535).contains(&port) {
-        return Err("Port must be between 1024 and 65535".to_string());
-    }
-
-    // Save to database
-    save_mitm_port_to_db(port)?;
-
-    // Update global state
-    let mut current_port = MITM_PROXY_PORT.lock().unwrap();
-    *current_port = port;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn restart_mitm_proxy() -> Result<String, String> {
-    let port = *MITM_PROXY_PORT.lock().unwrap();
-
-    // Send restart signal
-    let sender_guard = MITM_RESTART_SENDER.lock().unwrap();
-    if let Some(sender) = sender_guard.as_ref() {
-        sender.send(true).map_err(|e| e.to_string())?;
-        Ok(format!("MITM Proxy server restarting on port {}", port))
-    } else {
-        Err("MITM Proxy server not initialized".to_string())
-    }
-}
-
-// CA Certificate Commands
-
-#[tauri::command]
-pub fn get_ca_cert_path() -> String {
-    ca::get_ca_cert_path_string()
-}
-
-#[tauri::command]
-pub fn get_ca_cert_content() -> Result<String, String> {
-    ca::get_ca_cert_content()
-}
-
-#[tauri::command]
-pub fn export_ca_cert(dest_path: String) -> Result<(), String> {
-    ca::export_ca_cert(&dest_path)
-}
-
-#[tauri::command]
-pub fn ca_exists() -> bool {
-    ca::ca_exists()
-}
-
-#[tauri::command]
-pub fn open_ca_cert() -> Result<(), String> {
-    let path = ca::get_ca_cert_path();
-    if !path.exists() {
-        return Err("CA certificate does not exist yet. It will be generated when the MITM proxy starts.".to_string());
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open certificate: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open certificate: {}", e))?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
-            .spawn()
-            .map_err(|e| format!("Failed to open certificate: {}", e))?;
     }
 
     Ok(())
