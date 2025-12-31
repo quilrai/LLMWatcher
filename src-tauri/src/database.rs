@@ -270,36 +270,44 @@ impl Database {
         Ok(conn.last_insert_rowid())
     }
 
-    /// Update cursor hook output tokens and response body by generation_id
+    /// Update cursor hook output tokens, response body, and latency by generation_id
     pub fn update_cursor_hook_output(
         &self,
         generation_id: &str,
-        output_word_count: i32,
+        output_token_count: i32,
         response_text: Option<&str>,
     ) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
 
-        // Find the request by generation_id in extra_metadata
-        let existing: Option<(i64, i32)> = conn
+        // Find the request by generation_id in extra_metadata, also get timestamp for latency calculation
+        let existing: Option<(i64, i32, String)> = conn
             .query_row(
-                "SELECT id, output_tokens FROM requests WHERE json_extract(extra_metadata, '$.generation_id') = ?1 AND backend = 'cursor-hooks'",
+                "SELECT id, output_tokens, timestamp FROM requests WHERE json_extract(extra_metadata, '$.generation_id') = ?1 AND backend = 'cursor-hooks'",
                 rusqlite::params![generation_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .ok();
 
-        if let Some((id, current_output)) = existing {
-            let new_output = current_output + output_word_count;
+        if let Some((id, current_output, timestamp_str)) = existing {
+            let new_output = current_output + output_token_count;
+
+            // Calculate latency from stored timestamp
+            let latency_ms = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+                .map(|start_time| {
+                    let now = chrono::Utc::now();
+                    (now.signed_duration_since(start_time)).num_milliseconds().max(0) as i64
+                })
+                .unwrap_or(0);
 
             if let Some(text) = response_text {
                 conn.execute(
-                    "UPDATE requests SET output_tokens = ?1, response_body = ?2, assistant_message_count = 1 WHERE id = ?3",
-                    rusqlite::params![new_output, text, id],
+                    "UPDATE requests SET output_tokens = ?1, response_body = ?2, assistant_message_count = 1, latency_ms = ?3 WHERE id = ?4",
+                    rusqlite::params![new_output, text, latency_ms, id],
                 )?;
             } else {
                 conn.execute(
-                    "UPDATE requests SET output_tokens = ?1 WHERE id = ?2",
-                    rusqlite::params![new_output, id],
+                    "UPDATE requests SET output_tokens = ?1, latency_ms = ?2 WHERE id = ?3",
+                    rusqlite::params![new_output, latency_ms, id],
                 )?;
             }
         }

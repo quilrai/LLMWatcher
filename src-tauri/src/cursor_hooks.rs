@@ -14,6 +14,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 // ============================================================================
 // Common Input Fields (present in all hooks)
@@ -58,7 +59,6 @@ pub struct BeforeSubmitPromptInput {
 pub struct Attachment {
     #[serde(rename = "type")]
     pub attachment_type: Option<String>,
-    #[serde(rename = "filePath")]
     pub file_path: Option<String>,
 }
 
@@ -229,13 +229,18 @@ fn count_words(text: &str) -> i32 {
     text.split_whitespace().count() as i32
 }
 
+/// Estimate token count from text (words * 1.5)
+fn estimate_tokens(text: &str) -> i32 {
+    (count_words(text) as f32 * 1.5) as i32
+}
+
 /// Format detected entities for user message
 fn format_detection_message(detections: &[DlpDetection]) -> String {
     let mut message = String::from("Blocked: Sensitive data detected:\n");
     for detection in detections {
         message.push_str(&format!(
-            "- {} ({})\n",
-            detection.pattern_name, detection.pattern_type
+            "- {} ({}): \"{}\"\n",
+            detection.pattern_name, detection.pattern_type, detection.original_value
         ));
     }
     message
@@ -249,8 +254,28 @@ fn format_detection_message(detections: &[DlpDetection]) -> String {
 /// Checks prompt and attached files for sensitive data, blocks if found
 async fn before_submit_prompt_handler(
     State(state): State<CursorHooksState>,
-    Json(input): Json<BeforeSubmitPromptInput>,
+    Json(raw_json): Json<Value>,
 ) -> impl IntoResponse {
+    // Log raw JSON to debug attachment structure
+    println!(
+        "[CURSOR_HOOK] before_submit_prompt - raw JSON: {}",
+        serde_json::to_string_pretty(&raw_json).unwrap_or_default()
+    );
+
+    let input: BeforeSubmitPromptInput = match serde_json::from_value(raw_json) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("[CURSOR_HOOK] Failed to parse input: {}", e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(BeforeSubmitPromptResponse {
+                    should_continue: true,
+                    user_message: Some(format!("Parse error: {}", e)),
+                }),
+            );
+        }
+    };
+
     println!(
         "[CURSOR_HOOK] before_submit_prompt - generation_id: {}, attachments: {}",
         input.generation_id,
@@ -259,30 +284,46 @@ async fn before_submit_prompt_handler(
 
     // Check DLP patterns on prompt text
     let mut all_detections = check_dlp_patterns(&input.prompt);
-    let mut total_word_count = count_words(&input.prompt);
+    let mut total_token_count = estimate_tokens(&input.prompt);
 
     // Also check attached files
     for attachment in &input.attachments {
+        println!(
+            "[CURSOR_HOOK] before_submit_prompt - attachment raw: {:?}",
+            attachment
+        );
         if let (Some(file_path), Some(att_type)) = (&attachment.file_path, &attachment.attachment_type) {
+            println!(
+                "[CURSOR_HOOK] before_submit_prompt - processing attachment: {} (type: {})",
+                file_path, att_type
+            );
             if att_type == "file" {
                 // Read and check the file content
-                if let Ok(content) = std::fs::read_to_string(file_path) {
-                    let file_detections = check_dlp_patterns(&content);
-                    if !file_detections.is_empty() {
-                        println!(
-                            "[CURSOR_HOOK] DLP detected in attached file: {}",
-                            file_path
-                        );
-                        all_detections.extend(file_detections);
+                match std::fs::read_to_string(file_path) {
+                    Ok(content) => {
+                        let file_detections = check_dlp_patterns(&content);
+                        if !file_detections.is_empty() {
+                            println!(
+                                "[CURSOR_HOOK] DLP detected in attached file: {}",
+                                file_path
+                            );
+                            all_detections.extend(file_detections);
+                        }
+                        total_token_count += estimate_tokens(&content);
                     }
-                    total_word_count += count_words(&content);
+                    Err(e) => {
+                        println!(
+                            "[CURSOR_HOOK] Error reading attached file {}: {}",
+                            file_path, e
+                        );
+                    }
                 }
             }
         }
     }
 
     let is_blocked = !all_detections.is_empty();
-    let word_count = total_word_count;
+    let token_count = total_token_count;
 
     // Build extra metadata
     let metadata = CursorHookMetadata {
@@ -310,7 +351,7 @@ async fn before_submit_prompt_handler(
         &input.generation_id,
         "CursorChat",
         &input.model,
-        word_count,
+        token_count,
         0, // output_tokens will be updated later
         &input.prompt,
         if is_blocked { "BLOCKED" } else { "" },
@@ -368,12 +409,45 @@ async fn before_read_file_handler(
         }
     };
 
-    // Check DLP patterns
-    let detections = check_dlp_patterns(&content);
-    let is_blocked = !detections.is_empty();
+    // Check DLP patterns on main content
+    let mut all_detections = check_dlp_patterns(&content);
+
+    // Also check attached files if present
+    if let Some(attachments) = &input.attachments {
+        for attachment in attachments {
+            if let (Some(file_path), Some(att_type)) = (&attachment.file_path, &attachment.attachment_type) {
+                println!(
+                    "[CURSOR_HOOK] before_read_file - processing attachment: {} (type: {})",
+                    file_path, att_type
+                );
+                if att_type == "file" {
+                    match std::fs::read_to_string(file_path) {
+                        Ok(att_content) => {
+                            let file_detections = check_dlp_patterns(&att_content);
+                            if !file_detections.is_empty() {
+                                println!(
+                                    "[CURSOR_HOOK] DLP detected in attached file: {}",
+                                    file_path
+                                );
+                                all_detections.extend(file_detections);
+                            }
+                        }
+                        Err(e) => {
+                            println!(
+                                "[CURSOR_HOOK] Error reading attached file {}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let is_blocked = !all_detections.is_empty();
 
     let (permission, user_message, agent_message) = if is_blocked {
-        let msg = format_detection_message(&detections);
+        let msg = format_detection_message(&all_detections);
         (
             "deny".to_string(),
             Some(msg.clone()),
@@ -401,21 +475,21 @@ async fn before_read_file_handler(
 
     // Log blocked file reads to database
     if is_blocked {
-        let word_count = count_words(&content);
+        let token_count = estimate_tokens(&content);
         let response_status = 403;
 
         if let Ok(request_id) = state.db.log_cursor_hook_request(
             &input.generation_id,
             "CursorChat",
             "",
-            word_count,
+            token_count,
             0,
             &format!("File read: {}", input.file_path),
             "BLOCKED - file read denied",
             response_status,
             metadata_json.as_deref(),
         ) {
-            let _ = state.db.log_dlp_detections(request_id, &detections);
+            let _ = state.db.log_dlp_detections(request_id, &all_detections);
         }
     }
 
@@ -480,14 +554,14 @@ async fn before_tab_file_read_handler(
     let metadata_json = serde_json::to_string(&metadata).ok();
 
     // Log to database
-    let word_count = count_words(&content);
+    let token_count = estimate_tokens(&content);
     let response_status = if is_blocked { 403 } else { 200 };
 
     if let Ok(request_id) = state.db.log_cursor_hook_request(
         &input.generation_id,
         "CursorTab",
         &input.model,
-        word_count,
+        token_count,
         0,
         &format!("Tab file read: {}", input.file_path),
         if is_blocked { "BLOCKED" } else { "allowed" },
@@ -517,12 +591,12 @@ async fn after_agent_response_handler(
         input.generation_id
     );
 
-    let word_count = count_words(&input.text);
+    let token_count = estimate_tokens(&input.text);
 
     // Update existing request entry with output tokens, or create new one
     let _ = state.db.update_cursor_hook_output(
         &input.generation_id,
-        word_count,
+        token_count,
         Some(&input.text),
     );
 
@@ -540,12 +614,12 @@ async fn after_agent_thought_handler(
         input.generation_id, input.duration_ms
     );
 
-    let word_count = count_words(&input.text);
+    let token_count = estimate_tokens(&input.text);
 
-    // Add thinking word count to output tokens
+    // Add thinking token count to output tokens
     let _ = state.db.add_cursor_hook_thinking_tokens(
         &input.generation_id,
-        word_count,
+        token_count,
     );
 
     (StatusCode::OK, Json(GenericResponse { status: "ok".to_string() }))
@@ -562,11 +636,11 @@ async fn after_tab_file_edit_handler(
         input.generation_id, input.file_path, input.edits.len()
     );
 
-    // Calculate word count from new_string in all edits (represents output/generated code)
-    let output_word_count: i32 = input
+    // Calculate token count from new_string in all edits (represents output/generated code)
+    let output_token_count: i32 = input
         .edits
         .iter()
-        .map(|edit| count_words(&edit.new_string))
+        .map(|edit| estimate_tokens(&edit.new_string))
         .sum();
 
     // Serialize edits for response body
@@ -576,7 +650,7 @@ async fn after_tab_file_edit_handler(
     // Update existing entry from beforeTabFileRead with output tokens
     let _ = state.db.update_cursor_hook_output(
         &input.generation_id,
-        output_word_count,
+        output_token_count,
         Some(&response_body),
     );
 
