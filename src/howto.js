@@ -80,13 +80,6 @@ function getToolInstructions(tool) {
         </div>
       `
     },
-    'gemini': {
-      title: 'Gemini CLI',
-      content: `
-        <p>Gemini CLI support coming soon.</p>
-        <p>Instructions for configuring Gemini CLI to use this proxy will be added in a future update.</p>
-      `
-    },
     'codex': {
       title: 'Codex CLI',
       content: `
@@ -122,20 +115,6 @@ function getToolInstructions(tool) {
         <div id="shell-set-status" class="shell-set-status"></div>
       `
     },
-    'antigravity': {
-      title: 'Antigravity',
-      content: `
-        <p>Antigravity support coming soon.</p>
-        <p>Instructions for configuring Antigravity to use this proxy will be added in a future update.</p>
-      `
-    },
-    'vscode': {
-      title: 'VS Code',
-      content: `
-        <p>VS Code support coming soon.</p>
-        <p>Instructions for configuring VS Code extensions to use this proxy will be added in a future update.</p>
-      `
-    }
   };
 
   return instructions[tool] || { title: 'Unknown', content: '<p>No instructions available.</p>' };
