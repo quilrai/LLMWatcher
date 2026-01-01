@@ -62,41 +62,112 @@
     color: #fff;
   }
 
-  /* Logs Table */
-  .logs-table-container {
+  /* Log Cards */
+  .log-card {
     background: #1a1a2e;
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    border-color: #2a2a3e;
   }
 
-  .logs-table thead {
-    background: #12121f;
+  .log-card-header {
     border-bottom-color: #2a2a3e;
   }
 
-  .logs-table th {
-    color: #aaa;
-  }
-
-  .logs-table td {
-    border-bottom-color: #2a2a3e;
-    color: #e8e8e8;
-  }
-
-  .logs-table tbody tr:hover {
-    background: #12121f;
-  }
-
-  .logs-table .col-time {
+  .log-time {
     color: #888;
   }
 
-  .json-btn {
+  .log-pill.backend {
     background: #2a2a4e;
-    color: #818cf8;
+    color: #a5b4fc;
   }
 
-  .json-btn:hover {
+  .log-pill.model {
+    background: #2a2a3e;
+    color: #e8e8e8;
+  }
+
+  .log-pill.status.passed {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .log-pill.status.blocked {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .log-pill.status.redacted {
+    background: #7c2d12;
+    color: #fed7aa;
+  }
+
+  .log-card-stats {
+    background: #12121f;
+    color: #aaa;
+  }
+
+  .log-card-stats .stat strong {
+    color: #e8e8e8;
+  }
+
+  .log-card-tabs {
+    border-bottom-color: #2a2a3e;
+  }
+
+  .log-tab {
+    color: #888;
+  }
+
+  .log-tab:hover {
+    color: #818cf8;
+    background: #12121f;
+  }
+
+  .log-tab.active {
+    color: #818cf8;
+    border-bottom-color: #818cf8;
+  }
+
+  .log-card-subtabs {
+    background: #12121f;
+    border-bottom-color: #2a2a3e;
+  }
+
+  .log-subtab {
+    border-color: #2a2a3e;
+    color: #888;
+  }
+
+  .log-subtab:hover {
+    background: #1a1a2e;
+    border-color: #4f46e5;
+    color: #a5b4fc;
+  }
+
+  .log-subtab.active {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+  }
+
+  .log-copy-btn {
+    background: #2a2a4e;
+    color: #a5b4fc;
+  }
+
+  .log-copy-btn:hover {
     background: #3a3a5e;
+  }
+
+  .log-copy-btn.copied {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .log-json {
+    background: #1a1a2e;
+    color: #e8e8e8;
   }
 
   /* JSON Modal */
@@ -155,6 +226,10 @@
 
   .setting-description {
     color: #888;
+  }
+
+  .setting-note {
+    color: #666;
   }
 
   .port-input {

@@ -357,6 +357,8 @@ async fn before_submit_prompt_handler(
     let response_body_json = serde_json::to_string(&response).unwrap_or_default();
 
     // Log to database
+    // dlp_action: 0=Passed, 1=Redacted, 2=Blocked
+    let dlp_action = if is_blocked { 2 } else { 0 };
     if let Ok(request_id) = state.db.log_cursor_hook_request(
         &input.generation_id,
         "CursorChat",
@@ -369,6 +371,7 @@ async fn before_submit_prompt_handler(
         metadata_json.as_deref(),
         None, // request_headers (not applicable for cursor hooks)
         None, // response_headers (not applicable for cursor hooks)
+        dlp_action,
     ) {
         // Log DLP detections if any
         if !all_detections.is_empty() {
@@ -491,24 +494,27 @@ async fn before_read_file_handler(
     };
     let response_body_json = serde_json::to_string(&response).unwrap_or_default();
 
-    // Log blocked file reads to database
-    if is_blocked {
-        let token_count = estimate_tokens(&content);
-        let response_status = 403;
+    // Log to database
+    // dlp_action: 0=None, 1=Passed, 2=Blocked
+    let token_count = estimate_tokens(&content);
+    let response_status = if is_blocked { 403 } else { 200 };
+    let dlp_action = if is_blocked { 2 } else { 1 };
 
-        if let Ok(request_id) = state.db.log_cursor_hook_request(
-            &input.generation_id,
-            "CursorChat",
-            &input.model,
-            token_count,
-            0,
-            &request_body_json,
-            &response_body_json,
-            response_status,
-            metadata_json.as_deref(),
-            None, // request_headers (not applicable for cursor hooks)
-            None, // response_headers (not applicable for cursor hooks)
-        ) {
+    if let Ok(request_id) = state.db.log_cursor_hook_request(
+        &input.generation_id,
+        "CursorChat",
+        &input.model,
+        token_count,
+        0,
+        &request_body_json,
+        &response_body_json,
+        response_status,
+        metadata_json.as_deref(),
+        None, // request_headers (not applicable for cursor hooks)
+        None, // response_headers (not applicable for cursor hooks)
+        dlp_action,
+    ) {
+        if !all_detections.is_empty() {
             let _ = state.db.log_dlp_detections(request_id, &all_detections);
         }
     }
@@ -577,8 +583,10 @@ async fn before_tab_file_read_handler(
     let response_body_json = serde_json::to_string(&response).unwrap_or_default();
 
     // Log to database
+    // dlp_action: 0=None, 1=Passed, 2=Blocked
     let token_count = estimate_tokens(&content);
     let response_status = if is_blocked { 403 } else { 200 };
+    let dlp_action = if is_blocked { 2 } else { 1 };
 
     if let Ok(request_id) = state.db.log_cursor_hook_request(
         &input.generation_id,
@@ -592,6 +600,7 @@ async fn before_tab_file_read_handler(
         metadata_json.as_deref(),
         None, // request_headers (not applicable for cursor hooks)
         None, // response_headers (not applicable for cursor hooks)
+        dlp_action,
     ) {
         if !detections.is_empty() {
             let _ = state.db.log_dlp_detections(request_id, &detections);
@@ -614,12 +623,26 @@ async fn after_agent_response_handler(
 
     let token_count = estimate_tokens(&input.text);
 
-    // Update existing request entry with output tokens, or create new one
-    let _ = state.db.update_cursor_hook_output(
+    // Update existing request entry with output tokens
+    match state.db.update_cursor_hook_output(
         &input.generation_id,
         token_count,
         Some(&input.text),
-    );
+    ) {
+        Ok(false) => {
+            println!(
+                "[CURSOR_HOOK] WARNING: No entry found for generation_id: {} in after_agent_response",
+                input.generation_id
+            );
+        }
+        Err(e) => {
+            println!(
+                "[CURSOR_HOOK] ERROR: Failed to update output for generation_id {}: {}",
+                input.generation_id, e
+            );
+        }
+        _ => {}
+    }
 
     (StatusCode::OK, Json(GenericResponse { status: "ok".to_string() }))
 }
@@ -638,10 +661,24 @@ async fn after_agent_thought_handler(
     let token_count = estimate_tokens(&input.text);
 
     // Add thinking token count to output tokens
-    let _ = state.db.add_cursor_hook_thinking_tokens(
+    match state.db.add_cursor_hook_thinking_tokens(
         &input.generation_id,
         token_count,
-    );
+    ) {
+        Ok(false) => {
+            println!(
+                "[CURSOR_HOOK] WARNING: No entry found for generation_id: {} in after_agent_thought",
+                input.generation_id
+            );
+        }
+        Err(e) => {
+            println!(
+                "[CURSOR_HOOK] ERROR: Failed to add thinking tokens for generation_id {}: {}",
+                input.generation_id, e
+            );
+        }
+        _ => {}
+    }
 
     (StatusCode::OK, Json(GenericResponse { status: "ok".to_string() }))
 }
@@ -669,11 +706,25 @@ async fn after_tab_file_edit_handler(
     let response_body = format!("Tab edit: {}\nEdits: {}", input.file_path, edits_json);
 
     // Update existing entry from beforeTabFileRead with output tokens
-    let _ = state.db.update_cursor_hook_output(
+    match state.db.update_cursor_hook_output(
         &input.generation_id,
         output_token_count,
         Some(&response_body),
-    );
+    ) {
+        Ok(false) => {
+            println!(
+                "[CURSOR_HOOK] WARNING: No entry found for generation_id: {} in after_tab_file_edit",
+                input.generation_id
+            );
+        }
+        Err(e) => {
+            println!(
+                "[CURSOR_HOOK] ERROR: Failed to update output for generation_id {}: {}",
+                input.generation_id, e
+            );
+        }
+        _ => {}
+    }
 
     (StatusCode::OK, Json(GenericResponse { status: "ok".to_string() }))
 }

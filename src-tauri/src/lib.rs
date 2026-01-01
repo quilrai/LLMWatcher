@@ -54,6 +54,8 @@ pub fn run() {
             commands::toggle_dlp_pattern,
             commands::delete_dlp_pattern,
             commands::get_dlp_detection_stats,
+            commands::get_dlp_action_setting,
+            commands::save_dlp_action_setting,
             commands::set_shell_env,
             commands::check_shell_env,
             commands::remove_shell_env,

@@ -2,9 +2,10 @@
 
 use crate::backends::{Backend, ClaudeBackend, CodexBackend};
 use crate::cursor_hooks::create_cursor_hooks_router;
-use crate::database::Database;
-use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction};
+use crate::database::{get_dlp_action_from_db, Database};
+use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction, DlpDetection};
 use crate::dlp_pattern_config::DB_PATH;
+use crate::requestresponsemetadata::ResponseMetadata;
 use crate::{PROXY_PORT, RESTART_SENDER};
 
 use axum::{
@@ -52,6 +53,41 @@ fn decompress_gzip(data: &[u8]) -> Option<String> {
         Ok(_) => Some(decompressed),
         Err(_) => None,
     }
+}
+
+/// Format detection pattern names for error message
+fn format_detection_patterns(detections: &[DlpDetection]) -> String {
+    let mut pattern_names: Vec<&str> = detections
+        .iter()
+        .map(|d| d.pattern_name.as_str())
+        .collect();
+    pattern_names.sort();
+    pattern_names.dedup();
+    pattern_names.join(", ")
+}
+
+/// Create Claude API error response body
+fn create_claude_error_response(pattern_names: &str) -> String {
+    serde_json::json!({
+        "type": "error",
+        "error": {
+            "type": "invalid_request_error",
+            "message": format!("Request blocked: sensitive data detected ({})", pattern_names)
+        }
+    })
+    .to_string()
+}
+
+/// Create Codex/OpenAI API error response body
+fn create_codex_error_response(pattern_names: &str) -> String {
+    serde_json::json!({
+        "error": {
+            "message": format!("Request blocked: sensitive data detected ({})", pattern_names),
+            "type": "invalid_request_error",
+            "code": "content_policy_violation"
+        }
+    })
+    .to_string()
 }
 
 #[derive(Clone)]
@@ -104,6 +140,54 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
     let dlp_result = apply_dlp_redaction(&request_body_str);
     let redacted_body = dlp_result.redacted_body;
     let dlp_replacements = dlp_result.replacements;
+
+    // Check if we should block (instead of redact) when DLP detections are found
+    let dlp_action = get_dlp_action_from_db();
+    if dlp_action == "block" && !dlp_result.detections.is_empty() {
+        println!(
+            "[PROXY] Blocking request due to DLP detections: {} patterns",
+            dlp_result.detections.len()
+        );
+
+        let pattern_names = format_detection_patterns(&dlp_result.detections);
+        let error_body = if backend.name() == "codex" {
+            create_codex_error_response(&pattern_names)
+        } else {
+            create_claude_error_response(&pattern_names)
+        };
+
+        // Log the blocked request
+        if backend.should_log(&request_body_str) {
+            let request_headers_json = headers_to_json(&headers);
+            let resp_meta = ResponseMetadata::default();
+
+            if let Ok(request_id) = db.log_request(
+                backend.name(),
+                &method.to_string(),
+                &full_path,
+                "Messages",
+                &request_body_str,
+                &error_body,
+                400,
+                false,
+                0,
+                &req_meta,
+                &resp_meta,
+                None,
+                Some(&request_headers_json),
+                None,
+                2, // dlp_action = 2 (blocked)
+            ) {
+                let _ = db.log_dlp_detections(request_id, &dlp_result.detections);
+            }
+        }
+
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header("Content-Type", "application/json")
+            .body(Body::from(error_body))
+            .unwrap();
+    }
 
     let mut reqwest_req = match method.clone() {
         Method::GET => client.get(&target_url),
@@ -241,6 +325,9 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                     &headers_clone,
                 );
 
+                // Determine dlp_action: 1=redacted if detections, 0=none
+                let dlp_action_value = if dlp_detections_clone.is_empty() { 0 } else { 1 };
+
                 if let Ok(request_id) = db_clone.log_request(
                     &backend_name,
                     &method_str,
@@ -256,6 +343,7 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                     extra_meta.as_deref(),
                     Some(&request_headers_json),
                     Some(&response_headers_json),
+                    dlp_action_value,
                 ) {
                     // Log DLP detections if any
                     if !dlp_detections_clone.is_empty() {
@@ -314,6 +402,9 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
             let request_headers_json = headers_to_json(&headers);
             let response_headers_json = reqwest_headers_to_json(&resp_headers);
 
+            // Determine dlp_action: 1=redacted if detections, 0=none
+            let dlp_action_value = if dlp_result.detections.is_empty() { 0 } else { 1 };
+
             if let Ok(request_id) = db.log_request(
                 backend.name(),
                 &method_str,
@@ -329,6 +420,7 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                 extra_meta.as_deref(),
                 Some(&request_headers_json),
                 Some(&response_headers_json),
+                dlp_action_value,
             ) {
                 // Log DLP detections if any
                 if !dlp_result.detections.is_empty() {

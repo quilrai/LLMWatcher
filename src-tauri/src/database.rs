@@ -82,6 +82,12 @@ impl Database {
             [],
         );
 
+        // Migration: Add dlp_action column if it doesn't exist (0=None, 1=Redacted, 2=Blocked)
+        let _ = conn.execute(
+            "ALTER TABLE requests ADD COLUMN dlp_action INTEGER DEFAULT 0",
+            [],
+        );
+
         // Create settings table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS settings (
@@ -223,6 +229,7 @@ impl Database {
         extra_metadata: Option<&str>,
         request_headers: Option<&str>,
         response_headers: Option<&str>,
+        dlp_action: i32,
     ) -> Result<i64, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         let timestamp = chrono::Utc::now().to_rfc3339();
@@ -234,8 +241,8 @@ impl Database {
                 latency_ms, has_system_prompt, has_tools, has_thinking, stop_reason,
                 user_message_count, assistant_message_count,
                 response_status, is_streaming, request_body, response_body, extra_metadata,
-                request_headers, response_headers
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                request_headers, response_headers, dlp_action
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             rusqlite::params![
                 timestamp,
                 backend,
@@ -261,6 +268,7 @@ impl Database {
                 extra_metadata,
                 request_headers,
                 response_headers,
+                dlp_action,
             ],
         )?;
 
@@ -313,6 +321,7 @@ impl Database {
         extra_metadata: Option<&str>,
         request_headers: Option<&str>,
         response_headers: Option<&str>,
+        dlp_action: i32,
     ) -> Result<i64, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
         let timestamp = chrono::Utc::now().to_rfc3339();
@@ -327,13 +336,14 @@ impl Database {
             .ok();
 
         if let Some(id) = existing_id {
-            // Update existing entry
+            // Update existing entry - only upgrade dlp_action (blocked > redacted > passed)
             conn.execute(
                 "UPDATE requests SET
                     input_tokens = input_tokens + ?1,
-                    response_status = ?2
-                 WHERE id = ?3",
-                rusqlite::params![input_tokens, response_status, id],
+                    response_status = CASE WHEN ?2 > response_status THEN ?2 ELSE response_status END,
+                    dlp_action = CASE WHEN ?3 > dlp_action THEN ?3 ELSE dlp_action END
+                 WHERE id = ?4",
+                rusqlite::params![input_tokens, response_status, dlp_action, id],
             )?;
             return Ok(id);
         }
@@ -346,8 +356,8 @@ impl Database {
                 latency_ms, has_system_prompt, has_tools, has_thinking, stop_reason,
                 user_message_count, assistant_message_count,
                 response_status, is_streaming, request_body, response_body, extra_metadata,
-                request_headers, response_headers
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                request_headers, response_headers, dlp_action
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             rusqlite::params![
                 timestamp,
                 "cursor-hooks",
@@ -373,6 +383,7 @@ impl Database {
                 extra_metadata,
                 request_headers,
                 response_headers,
+                dlp_action,
             ],
         )?;
 
@@ -380,12 +391,13 @@ impl Database {
     }
 
     /// Update cursor hook output tokens, response body, and latency by generation_id
+    /// Returns true if an entry was found and updated, false otherwise
     pub fn update_cursor_hook_output(
         &self,
         generation_id: &str,
         output_token_count: i32,
         response_text: Option<&str>,
-    ) -> Result<(), rusqlite::Error> {
+    ) -> Result<bool, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
 
         // Find the request by generation_id in extra_metadata, also get timestamp for latency calculation
@@ -419,21 +431,23 @@ impl Database {
                     rusqlite::params![new_output, latency_ms, id],
                 )?;
             }
+            Ok(true)
+        } else {
+            Ok(false)
         }
-
-        Ok(())
     }
 
     /// Add thinking tokens to cursor hook output by generation_id
+    /// Returns true if an entry was found and updated, false otherwise
     pub fn add_cursor_hook_thinking_tokens(
         &self,
         generation_id: &str,
         thinking_word_count: i32,
-    ) -> Result<(), rusqlite::Error> {
+    ) -> Result<bool, rusqlite::Error> {
         let conn = self.conn.lock().unwrap();
 
         // Find and update the request
-        conn.execute(
+        let rows_affected = conn.execute(
             "UPDATE requests SET
                 output_tokens = output_tokens + ?1,
                 has_thinking = 1
@@ -441,7 +455,7 @@ impl Database {
             rusqlite::params![thinking_word_count, generation_id],
         )?;
 
-        Ok(())
+        Ok(rows_affected > 0)
     }
 }
 
@@ -475,6 +489,45 @@ pub fn save_port_to_db(port: u16) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_port', ?1)",
         rusqlite::params![port.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// DLP action setting helpers
+
+pub fn get_dlp_action_from_db() -> String {
+    let conn = match Connection::open(DB_PATH) {
+        Ok(c) => c,
+        Err(_) => return "redact".to_string(),
+    };
+
+    // Ensure settings table exists
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        [],
+    );
+
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'dlp_action'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| "redact".to_string())
+}
+
+pub fn save_dlp_action_to_db(action: &str) -> Result<(), String> {
+    // Validate action value
+    if action != "redact" && action != "block" {
+        return Err("Invalid dlp_action value. Must be 'redact' or 'block'".to_string());
+    }
+
+    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('dlp_action', ?1)",
+        rusqlite::params![action],
     )
     .map_err(|e| e.to_string())?;
 

@@ -161,84 +161,203 @@
   border-radius: 3px;
 }
 
-/* ============ Logs Table ============ */
+/* ============ Logs Cards Grid ============ */
 
-.logs-table-container {
+.logs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.log-card {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
 }
 
-.logs-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
+/* Card Header - Time and Pills */
+.log-card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.logs-table thead {
+.log-time {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.log-pill {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.log-pill.backend {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.log-pill.model {
+  background: #f3f4f6;
+  color: #374151;
+  font-family: monospace;
+}
+
+.log-pill.status {
+  margin-left: auto;
+}
+
+.log-pill.status.passed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.log-pill.status.blocked {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.log-pill.status.redacted {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+/* Card Stats Row */
+.log-card-stats {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #f8f9fa;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.log-card-stats .stat {
+  display: flex;
+  gap: 4px;
+}
+
+.log-card-stats .stat strong {
+  color: #333;
+  font-weight: 600;
+}
+
+/* Card Tabs (Data/Headers) */
+.log-card-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.log-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.log-tab:hover {
+  color: #6366f1;
+  background: #f8f9fa;
+}
+
+.log-tab.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+/* Card Subtabs (Request/Response) */
+.log-card-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
   background: #f8f9fa;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.logs-table th {
-  padding: 12px 16px;
-  text-align: left;
-  font-weight: 600;
-  color: #555;
+.log-subtab {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   font-size: 0.75rem;
-  text-transform: uppercase;
-}
-
-.logs-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
-  color: #333;
-}
-
-.logs-table tbody tr:hover {
-  background: #f8f9fa;
-}
-
-.logs-table .col-time {
-  white-space: nowrap;
+  font-weight: 500;
   color: #666;
-  font-size: 0.8rem;
-}
-
-.logs-table .col-backend {
-  text-transform: capitalize;
-}
-
-.logs-table .col-model {
-  font-family: monospace;
-  font-size: 0.8rem;
-}
-
-.logs-table .col-tokens {
-  font-family: monospace;
-  font-size: 0.8rem;
-}
-
-.logs-table .col-latency {
-  font-family: monospace;
-  font-size: 0.8rem;
-}
-
-.json-btn {
-  padding: 4px 12px;
-  background: #e0e7ff;
-  color: #4338ca;
-  border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.log-subtab:hover {
+  background: #fff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+.log-subtab.active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.log-copy-btn {
+  margin-left: auto;
+  padding: 5px 10px;
+  background: #e0e7ff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4338ca;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
   font-weight: 500;
   transition: all 0.2s;
 }
 
-.json-btn:hover {
+.log-copy-btn:hover {
   background: #c7d2fe;
+}
+
+.log-copy-btn.copied {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* Card Content */
+.log-card-content {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.log-json {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #333;
+  background: #fff;
 }
 
 /* ============ Settings Page ============ */
@@ -273,6 +392,13 @@
 .setting-description {
   font-size: 0.85rem;
   color: #666;
+}
+
+.setting-note {
+  font-size: 0.75rem;
+  color: #999;
+  font-style: italic;
+  margin-top: 4px;
 }
 
 .setting-control {

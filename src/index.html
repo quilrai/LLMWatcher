@@ -123,6 +123,25 @@
             <div class="card">
               <div class="card-header">DLP Settings</div>
               <div class="card-body">
+                <div class="setting-row" style="margin-bottom: 20px;">
+                  <div class="setting-info">
+                    <label class="setting-label">DLP Action</label>
+                    <p class="setting-description" id="dlp-action-description">Sensitive data is redacted before sending to LLM and restored in the response seamlessly. No manual action needed.</p>
+                    <p class="setting-note">Cursor supports blocking only.</p>
+                  </div>
+                  <div class="setting-control">
+                    <div class="toggle-switch-container">
+                      <span class="toggle-label" id="dlp-action-label-redact">Redact</span>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="dlp-action-toggle" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                      <span class="toggle-label" id="dlp-action-label-block">Block</span>
+                    </div>
+                  </div>
+                </div>
+                <div id="dlp-action-status" class="settings-status"></div>
+
                 <div class="dlp-section">
                   <div class="dlp-section-header">
                     <h4 class="dlp-section-title">DLP Patterns</h4>

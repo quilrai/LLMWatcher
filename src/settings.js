@@ -97,6 +97,87 @@ async function savePortSetting() {
   }
 }
 
+// ============ DLP Action Setting ============
+
+const DLP_ACTION_DESCRIPTIONS = {
+  redact: 'Sensitive data is redacted before sending to LLM and restored in the response seamlessly. No manual action needed.',
+  block: 'If any sensitive data is found, the request is blocked. Manual action is required to remove sensitive data from your prompt or files.'
+};
+
+// Load DLP action setting from backend
+async function loadDlpActionSetting() {
+  try {
+    const action = await invoke('get_dlp_action_setting');
+    const toggle = document.getElementById('dlp-action-toggle');
+    const labelRedact = document.getElementById('dlp-action-label-redact');
+    const labelBlock = document.getElementById('dlp-action-label-block');
+
+    if (toggle) {
+      toggle.checked = action === 'block';
+      updateDlpActionUI(toggle.checked, labelRedact, labelBlock);
+    }
+  } catch (error) {
+    console.error('Failed to load DLP action setting:', error);
+  }
+}
+
+// Update UI based on toggle state (labels and description)
+function updateDlpActionUI(isBlock, labelRedact, labelBlock) {
+  // Update label styles
+  if (labelRedact && labelBlock) {
+    if (isBlock) {
+      labelRedact.classList.remove('active');
+      labelBlock.classList.add('active');
+    } else {
+      labelRedact.classList.add('active');
+      labelBlock.classList.remove('active');
+    }
+  }
+
+  // Update description text
+  const description = document.getElementById('dlp-action-description');
+  if (description) {
+    description.textContent = isBlock ? DLP_ACTION_DESCRIPTIONS.block : DLP_ACTION_DESCRIPTIONS.redact;
+  }
+}
+
+// Save DLP action setting
+async function saveDlpActionSetting(action) {
+  try {
+    await invoke('save_dlp_action_setting', { action });
+    showSettingsStatus(
+      action === 'block'
+        ? 'DLP action set to Block - requests with sensitive data will be blocked'
+        : 'DLP action set to Redact - sensitive data will be redacted from requests',
+      'success',
+      'dlp-action-status'
+    );
+  } catch (error) {
+    console.error('Failed to save DLP action setting:', error);
+    showSettingsStatus(`Failed to save: ${error}`, 'error', 'dlp-action-status');
+    // Revert toggle
+    loadDlpActionSetting();
+  }
+}
+
+// Initialize DLP action toggle
+function initDlpActionToggle() {
+  const toggle = document.getElementById('dlp-action-toggle');
+  const labelRedact = document.getElementById('dlp-action-label-redact');
+  const labelBlock = document.getElementById('dlp-action-label-block');
+
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      const action = toggle.checked ? 'block' : 'redact';
+      updateDlpActionUI(toggle.checked, labelRedact, labelBlock);
+      saveDlpActionSetting(action);
+    });
+  }
+
+  // Load initial state
+  loadDlpActionSetting();
+}
+
 // ============ DLP Settings ============
 
 // Store patterns for editing
@@ -133,7 +214,7 @@ function renderPatterns(patterns) {
       <span class="dlp-pattern-name">${escapeHtml(pattern.name)}</span>
       <span class="dlp-pattern-badge ${pattern.is_builtin ? 'builtin' : pattern.pattern_type}">${pattern.is_builtin ? 'Built-in' : pattern.pattern_type}</span>
       ${pattern.min_unique_chars > 0 ? `<span class="dlp-pattern-meta">Unique chars >= ${pattern.min_unique_chars}</span>` : ''}
-      ${pattern.min_occurrences > 1 ? `<span class="dlp-pattern-meta">Occurrence >= ${pattern.min_occurrences}</span>` : ''}
+      <span class="dlp-pattern-meta">Occurrence >= ${pattern.min_occurrences}</span>
       <div class="dlp-pattern-actions">
         <button class="dlp-pattern-edit" data-id="${pattern.id}" title="Edit pattern">
           <i data-lucide="pencil"></i>
@@ -368,6 +449,9 @@ export function initSettings() {
 
   // Load settings
   loadPortSetting();
+
+  // Initialize DLP action toggle
+  initDlpActionToggle();
 
   // Initialize DLP settings
   initDlpSettings();

@@ -8,58 +8,18 @@ import {
   setCurrentLogs,
   formatNumber,
   formatLatency,
-  formatTimestamp,
+  formatRelativeTime,
   shortenModel,
   escapeHtml
 } from './utils.js';
 
-// Render message logs table
-function renderLogsTable(logs) {
-  setCurrentLogs(logs);
-
-  if (logs.length === 0) {
-    return `
-      <div class="empty-state">
-        <h3>No logs yet</h3>
-        <p>Make some API requests through the proxy to see logs here.</p>
-      </div>
-    `;
+// Get DLP status info
+function getDlpStatus(dlpAction) {
+  switch (dlpAction) {
+    case 2: return { label: 'Blocked', class: 'blocked' };
+    case 1: return { label: 'Redacted', class: 'redacted' };
+    default: return { label: 'Passed', class: 'passed' };
   }
-
-  return `
-    <div class="logs-table-container">
-      <table class="logs-table">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Backend</th>
-            <th>Model</th>
-            <th>Tokens</th>
-            <th>Latency</th>
-            <th>Request</th>
-            <th>Response</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${logs.map((log, index) => `
-            <tr>
-              <td class="col-time">${formatTimestamp(log.timestamp)}</td>
-              <td class="col-backend">${log.backend}</td>
-              <td class="col-model">${shortenModel(log.model)}</td>
-              <td class="col-tokens">${formatNumber(log.input_tokens)} / ${formatNumber(log.output_tokens)}</td>
-              <td class="col-latency">${formatLatency(log.latency_ms)}</td>
-              <td class="col-json">
-                <button class="json-btn" data-index="${index}" data-type="request">View</button>
-              </td>
-              <td class="col-json">
-                <button class="json-btn" data-index="${index}" data-type="response">View</button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
 }
 
 // Format JSON string for display
@@ -72,51 +32,143 @@ function formatJson(jsonStr) {
   }
 }
 
-// Show JSON modal with tabbed view (Headers/Body)
-function showJsonModal(title, headersStr, bodyStr) {
-  const existing = document.getElementById('json-modal');
-  if (existing) existing.remove();
+// Render a single log card
+function renderLogCard(log, index) {
+  const status = getDlpStatus(log.dlp_action);
 
-  const formattedHeaders = formatJson(headersStr);
-  const formattedBody = formatJson(bodyStr);
-
-  const modal = document.createElement('div');
-  modal.id = 'json-modal';
-  modal.className = 'json-modal';
-  modal.innerHTML = `
-    <div class="json-modal-content">
-      <div class="json-modal-header">
-        <h3>${title}</h3>
-        <button class="json-modal-close">&times;</button>
+  return `
+    <div class="log-card" data-index="${index}">
+      <div class="log-card-header">
+        <span class="log-time">${formatRelativeTime(log.timestamp)}</span>
+        <span class="log-pill backend">${log.backend}</span>
+        <span class="log-pill model">${shortenModel(log.model)}</span>
+        <span class="log-pill status ${status.class}">${status.label}</span>
       </div>
-      <div class="json-modal-tabs">
-        <button class="json-modal-tab active" data-tab="headers">Headers</button>
-        <button class="json-modal-tab" data-tab="body">Body</button>
+      <div class="log-card-stats">
+        <span class="stat"><strong>Latency:</strong> ${formatLatency(log.latency_ms)}</span>
+        <span class="stat"><strong>In:</strong> ${formatNumber(log.input_tokens)}</span>
+        <span class="stat"><strong>Out:</strong> ${formatNumber(log.output_tokens)}</span>
       </div>
-      <div class="json-modal-tab-content">
-        <pre class="json-modal-body tab-panel active" data-panel="headers">${escapeHtml(formattedHeaders)}</pre>
-        <pre class="json-modal-body tab-panel" data-panel="body">${escapeHtml(formattedBody)}</pre>
+      <div class="log-card-tabs">
+        <button class="log-tab active" data-tab="data" data-index="${index}">Data</button>
+        <button class="log-tab" data-tab="headers" data-index="${index}">Headers</button>
+      </div>
+      <div class="log-card-subtabs">
+        <button class="log-subtab active" data-subtab="request" data-index="${index}">Request</button>
+        <button class="log-subtab" data-subtab="response" data-index="${index}">Response</button>
+        <button class="log-copy-btn" data-index="${index}" title="Copy request & response">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="log-card-content">
+        <pre class="log-json" data-index="${index}">${escapeHtml(formatJson(log.request_body))}</pre>
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
+}
 
-  // Tab switching logic
-  modal.querySelectorAll('.json-modal-tab').forEach(tab => {
+// Render message logs as cards
+function renderLogsCards(logs) {
+  setCurrentLogs(logs);
+
+  if (logs.length === 0) {
+    return `
+      <div class="empty-state">
+        <h3>No logs yet</h3>
+        <p>Make some API requests through the proxy to see logs here.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="logs-grid">
+      ${logs.map((log, index) => renderLogCard(log, index)).join('')}
+    </div>
+  `;
+}
+
+// Update card content based on current tab/subtab state
+function updateCardContent(card, index) {
+  const log = currentLogs[index];
+  const activeTab = card.querySelector('.log-tab.active').dataset.tab;
+  const activeSubtab = card.querySelector('.log-subtab.active').dataset.subtab;
+  const jsonPre = card.querySelector('.log-json');
+
+  let content;
+  if (activeTab === 'data') {
+    content = activeSubtab === 'request' ? log.request_body : log.response_body;
+  } else {
+    content = activeSubtab === 'request' ? log.request_headers : log.response_headers;
+  }
+
+  jsonPre.textContent = formatJson(content);
+}
+
+// Copy both request and response as tuple
+function copyLogData(index, tab) {
+  const log = currentLogs[index];
+  let data;
+
+  if (tab === 'data') {
+    data = {
+      request: JSON.parse(log.request_body || '{}'),
+      response: JSON.parse(log.response_body || '{}')
+    };
+  } else {
+    data = {
+      request: JSON.parse(log.request_headers || '{}'),
+      response: JSON.parse(log.response_headers || '{}')
+    };
+  }
+
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+    // Brief visual feedback could be added here
+  }).catch(err => {
+    console.error('Failed to copy:', err);
+  });
+}
+
+// Attach event handlers to log cards
+function attachCardHandlers(container) {
+  // Tab switching (Data/Headers)
+  container.querySelectorAll('.log-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      const tabName = tab.dataset.tab;
-      // Update active tab button
-      modal.querySelectorAll('.json-modal-tab').forEach(t => t.classList.remove('active'));
+      const card = tab.closest('.log-card');
+      const index = parseInt(tab.dataset.index);
+
+      card.querySelectorAll('.log-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      // Update active panel
-      modal.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      modal.querySelector(`.tab-panel[data-panel="${tabName}"]`).classList.add('active');
+      updateCardContent(card, index);
     });
   });
 
-  modal.querySelector('.json-modal-close').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.remove();
+  // Subtab switching (Request/Response)
+  container.querySelectorAll('.log-subtab').forEach(subtab => {
+    subtab.addEventListener('click', () => {
+      const card = subtab.closest('.log-card');
+      const index = parseInt(subtab.dataset.index);
+
+      card.querySelectorAll('.log-subtab').forEach(t => t.classList.remove('active'));
+      subtab.classList.add('active');
+      updateCardContent(card, index);
+    });
+  });
+
+  // Copy button
+  container.querySelectorAll('.log-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.log-card');
+      const index = parseInt(btn.dataset.index);
+      const activeTab = card.querySelector('.log-tab.active').dataset.tab;
+      copyLogData(index, activeTab);
+
+      // Visual feedback
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1000);
+    });
   });
 }
 
@@ -127,20 +179,8 @@ export async function loadMessageLogs() {
 
   try {
     const logs = await invoke('get_message_logs', { timeRange: logsTimeRange, backend: logsBackend });
-    content.innerHTML = renderLogsTable(logs);
-
-    // Add click handlers for JSON buttons
-    content.querySelectorAll('.json-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const index = parseInt(btn.dataset.index);
-        const type = btn.dataset.type;
-        const log = currentLogs[index];
-        const title = type === 'request' ? `Request #${log.id}` : `Response #${log.id}`;
-        const headersStr = type === 'request' ? log.request_headers : log.response_headers;
-        const bodyStr = type === 'request' ? log.request_body : log.response_body;
-        showJsonModal(title, headersStr, bodyStr);
-      });
-    });
+    content.innerHTML = renderLogsCards(logs);
+    attachCardHandlers(content);
   } catch (error) {
     content.innerHTML = `
       <div class="empty-state">

@@ -55,6 +55,7 @@ pub struct MessageLog {
     response_body: Option<String>,
     request_headers: Option<String>,
     response_headers: Option<String>,
+    dlp_action: i64, // 0=passed, 1=redacted, 2=blocked
 }
 
 #[derive(Serialize)]
@@ -317,7 +318,7 @@ pub fn get_message_logs(time_range: String, backend: String) -> Result<Vec<Messa
         .prepare(&format!(
             "SELECT id, timestamp, backend, COALESCE(model, 'unknown'),
                     input_tokens, output_tokens, latency_ms, request_body, response_body,
-                    request_headers, response_headers
+                    request_headers, response_headers, COALESCE(dlp_action, 0)
              FROM requests
              WHERE {} AND timestamp >= ?1{}
              ORDER BY id DESC
@@ -340,6 +341,7 @@ pub fn get_message_logs(time_range: String, backend: String) -> Result<Vec<Messa
                 response_body: row.get(8)?,
                 request_headers: row.get(9)?,
                 response_headers: row.get(10)?,
+                dlp_action: row.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?

@@ -1,5 +1,6 @@
 // DLP Settings Tauri Commands
 
+use crate::database::{get_dlp_action_from_db, save_dlp_action_to_db};
 use crate::dlp_pattern_config::DB_PATH;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -357,4 +358,14 @@ pub fn get_dlp_detection_stats(time_range: String) -> Result<DlpStats, String> {
         detections_by_pattern,
         recent_detections,
     })
+}
+
+#[tauri::command]
+pub fn get_dlp_action_setting() -> String {
+    get_dlp_action_from_db()
+}
+
+#[tauri::command]
+pub fn save_dlp_action_setting(action: String) -> Result<(), String> {
+    save_dlp_action_to_db(&action)
 }
