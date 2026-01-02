@@ -1,7 +1,7 @@
 // Stats and Monitoring Tauri Commands
 
 use crate::database::{get_port_from_db, save_port_to_db};
-use crate::dlp_pattern_config::DB_PATH;
+use crate::dlp_pattern_config::get_db_path;
 use crate::{PROXY_PORT, RESTART_SENDER};
 use rusqlite::Connection;
 use serde::Serialize;
@@ -103,7 +103,7 @@ const ENDPOINT_FILTER: &str = "endpoint_name IN ('Messages', 'CursorChat', 'Curs
 
 #[tauri::command]
 pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<DashboardData, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     let hours = time_range_to_hours(&time_range);
     let cutoff_ts = get_cutoff_timestamp(hours);
@@ -292,7 +292,7 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
 
 #[tauri::command]
 pub fn get_backends() -> Result<Vec<String>, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare("SELECT DISTINCT backend FROM requests ORDER BY backend")
@@ -309,7 +309,7 @@ pub fn get_backends() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub fn get_models() -> Result<Vec<String>, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare(&format!(
@@ -335,7 +335,7 @@ pub fn get_message_logs(
     dlp_action: String,
     page: i64,
 ) -> Result<PaginatedLogs, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     let hours = time_range_to_hours(&time_range);
     let cutoff_ts = get_cutoff_timestamp(hours);

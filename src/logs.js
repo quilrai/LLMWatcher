@@ -59,6 +59,7 @@ function renderLogCard(log, index, cardNum, total) {
       <div class="log-card-tabs">
         <button class="log-tab active" data-tab="data" data-index="${index}">Data</button>
         <button class="log-tab" data-tab="headers" data-index="${index}">Headers</button>
+        <button class="log-tab" data-tab="dlp" data-index="${index}">DLP Detections</button>
       </div>
       <div class="log-card-subtabs">
         <button class="log-subtab active" data-subtab="request" data-index="${index}">Request</button>
@@ -107,24 +108,48 @@ function renderLogsCards(logs, total) {
 }
 
 // Update card content based on current tab/subtab state
-function updateCardContent(card, index) {
+async function updateCardContent(card, index) {
   const log = currentLogs[index];
   const activeTab = card.querySelector('.log-tab.active').dataset.tab;
   const activeSubtab = card.querySelector('.log-subtab.active').dataset.subtab;
   const jsonPre = card.querySelector('.log-json');
+  const subtabsContainer = card.querySelector('.log-card-subtabs');
 
-  let content;
-  if (activeTab === 'data') {
-    content = activeSubtab === 'request' ? log.request_body : log.response_body;
+  // Show/hide subtabs based on tab type
+  if (activeTab === 'dlp') {
+    subtabsContainer.style.display = 'none';
+    // Fetch and display DLP detections
+    try {
+      const detections = await invoke('get_dlp_detections_for_request', { requestId: log.id });
+      if (detections.length === 0) {
+        jsonPre.textContent = 'No DLP detections for this request.';
+      } else {
+        const formatted = detections.map(d => ({
+          pattern: d.pattern_name,
+          type: d.pattern_type,
+          original: d.original_value,
+          replaced_with: d.placeholder,
+          message_index: d.message_index
+        }));
+        jsonPre.textContent = JSON.stringify(formatted, null, 2);
+      }
+    } catch (err) {
+      jsonPre.textContent = 'Error loading DLP detections: ' + err;
+    }
   } else {
-    content = activeSubtab === 'request' ? log.request_headers : log.response_headers;
+    subtabsContainer.style.display = '';
+    let content;
+    if (activeTab === 'data') {
+      content = activeSubtab === 'request' ? log.request_body : log.response_body;
+    } else {
+      content = activeSubtab === 'request' ? log.request_headers : log.response_headers;
+    }
+    jsonPre.textContent = formatJson(content);
   }
-
-  jsonPre.textContent = formatJson(content);
 }
 
 // Copy both request and response as tuple
-function copyLogData(index, tab) {
+async function copyLogData(index, tab) {
   const log = currentLogs[index];
   let data;
 
@@ -133,11 +158,24 @@ function copyLogData(index, tab) {
       request: JSON.parse(log.request_body || '{}'),
       response: JSON.parse(log.response_body || '{}')
     };
-  } else {
+  } else if (tab === 'headers') {
     data = {
       request: JSON.parse(log.request_headers || '{}'),
       response: JSON.parse(log.response_headers || '{}')
     };
+  } else if (tab === 'dlp') {
+    try {
+      const detections = await invoke('get_dlp_detections_for_request', { requestId: log.id });
+      data = detections.map(d => ({
+        pattern: d.pattern_name,
+        type: d.pattern_type,
+        original: d.original_value,
+        replaced_with: d.placeholder,
+        message_index: d.message_index
+      }));
+    } catch {
+      data = [];
+    }
   }
 
   navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {

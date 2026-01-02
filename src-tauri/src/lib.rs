@@ -4,6 +4,7 @@
 // Currently supports Claude (Anthropic), with plans for OpenAI, Gemini, etc.
 
 mod backends;
+mod builtin_patterns;
 mod commands;
 mod cursor_hooks;
 mod database;
@@ -120,6 +121,7 @@ pub fn run() {
             commands::toggle_dlp_pattern,
             commands::delete_dlp_pattern,
             commands::get_dlp_detection_stats,
+            commands::get_dlp_detections_for_request,
             commands::get_dlp_action_setting,
             commands::save_dlp_action_setting,
             commands::set_shell_env,

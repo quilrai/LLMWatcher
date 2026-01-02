@@ -4,7 +4,7 @@ use crate::backends::{Backend, ClaudeBackend, CodexBackend};
 use crate::cursor_hooks::create_cursor_hooks_router;
 use crate::database::{get_dlp_action_from_db, Database};
 use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction, DlpDetection};
-use crate::dlp_pattern_config::DB_PATH;
+use crate::dlp_pattern_config::get_db_path;
 use crate::requestresponsemetadata::ResponseMetadata;
 use crate::{PROXY_PORT, RESTART_SENDER};
 
@@ -287,7 +287,6 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
             match result {
                 Ok(bytes) => {
                     let chunk_str = String::from_utf8_lossy(&bytes).to_string();
-                    println!("[PROXY] Received chunk of {} bytes", bytes.len());
                     chunks_for_stream.lock().unwrap().push(chunk_str.clone());
 
                     // Apply DLP unredaction to each chunk
@@ -302,14 +301,10 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
         });
 
         let logged_stream = async_stream::stream! {
-            println!("[PROXY] Stream started, forwarding chunks to client...");
             let mut inner = std::pin::pin!(stream);
-            let mut chunk_count = 0;
             while let Some(item) = inner.next().await {
-                chunk_count += 1;
                 yield item;
             }
-            println!("[PROXY] Stream completed. Total chunks: {}", chunk_count);
 
             let latency_ms = start_time.elapsed().as_millis() as u64;
             let response_body = collected_chunks.lock().unwrap().join("");
@@ -447,8 +442,9 @@ pub async fn start_proxy_server() {
         // Get current port
         let port = *PROXY_PORT.lock().unwrap();
 
-        let db = Database::new(DB_PATH).expect("Failed to initialize database");
-        println!("Database initialized: {}", DB_PATH);
+        let db_path = get_db_path();
+        let db = Database::new(db_path).expect("Failed to initialize database");
+        println!("Database initialized: {}", db_path);
 
         // Clean up data older than 7 days on startup
         match db.cleanup_old_data() {

@@ -1,26 +1,11 @@
 // Database operations and schema management
 
+use crate::builtin_patterns::get_builtin_patterns;
 use crate::dlp::DlpDetection;
-use crate::dlp_pattern_config::{DB_PATH, DEFAULT_PORT};
+use crate::dlp_pattern_config::{get_db_path, DEFAULT_PORT};
 use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
 use rusqlite::Connection;
-use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-
-/// Builtin pattern definition from JSON
-#[derive(Deserialize)]
-struct BuiltinPattern {
-    name: String,
-    pattern_type: String,
-    patterns: Vec<String>,
-    negative_pattern_type: Option<String>,
-    negative_patterns: Option<Vec<String>>,
-    min_occurrences: i32,
-    min_unique_chars: i32,
-}
-
-/// Embedded builtin patterns JSON
-const BUILTIN_PATTERNS_JSON: &str = include_str!("../builtin_patterns.json");
 
 /// Thread-safe database wrapper
 #[derive(Clone)]
@@ -31,6 +16,14 @@ pub struct Database {
 impl Database {
     pub fn new(path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
+
+        // SQLite performance settings
+        conn.execute_batch("
+            PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA cache_size = -64000;
+            PRAGMA temp_store = MEMORY;
+        ")?;
 
         // Create requests table
         conn.execute(
@@ -147,25 +140,24 @@ impl Database {
 
     /// Seed builtin DLP patterns, overwriting if they already exist
     fn seed_builtin_patterns(conn: &Connection) -> Result<(), rusqlite::Error> {
-        // Parse builtin patterns from embedded JSON
-        let builtin_patterns: Vec<BuiltinPattern> =
-            serde_json::from_str(BUILTIN_PATTERNS_JSON).unwrap_or_default();
-
+        let builtin_patterns = get_builtin_patterns();
         let created_at = chrono::Utc::now().to_rfc3339();
 
         for pattern in builtin_patterns {
+            // Convert static slices to JSON strings for storage
+            let patterns_vec: Vec<&str> = pattern.patterns.to_vec();
             let patterns_json =
-                serde_json::to_string(&pattern.patterns).unwrap_or_else(|_| "[]".to_string());
-            let negative_patterns_json = pattern
-                .negative_patterns
-                .as_ref()
-                .map(|np| serde_json::to_string(np).unwrap_or_else(|_| "[]".to_string()));
+                serde_json::to_string(&patterns_vec).unwrap_or_else(|_| "[]".to_string());
+            let negative_patterns_json = pattern.negative_patterns.map(|np| {
+                let np_vec: Vec<&str> = np.to_vec();
+                serde_json::to_string(&np_vec).unwrap_or_else(|_| "[]".to_string())
+            });
 
             // Check if this builtin pattern already exists
             let existing_id: Option<i64> = conn
                 .query_row(
                     "SELECT id FROM dlp_patterns WHERE is_builtin = 1 AND name = ?1",
-                    rusqlite::params![&pattern.name],
+                    rusqlite::params![pattern.name],
                     |row| row.get(0),
                 )
                 .ok();
@@ -472,7 +464,7 @@ impl Database {
 // Port management helpers
 
 pub fn get_port_from_db() -> u16 {
-    let conn = match Connection::open(DB_PATH) {
+    let conn = match Connection::open(get_db_path()) {
         Ok(c) => c,
         Err(_) => return DEFAULT_PORT,
     };
@@ -494,7 +486,7 @@ pub fn get_port_from_db() -> u16 {
 }
 
 pub fn save_port_to_db(port: u16) -> Result<(), String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_port', ?1)",
@@ -508,7 +500,7 @@ pub fn save_port_to_db(port: u16) -> Result<(), String> {
 // DLP action setting helpers
 
 pub fn get_dlp_action_from_db() -> String {
-    let conn = match Connection::open(DB_PATH) {
+    let conn = match Connection::open(get_db_path()) {
         Ok(c) => c,
         Err(_) => return "redact".to_string(),
     };
@@ -533,7 +525,7 @@ pub fn save_dlp_action_to_db(action: &str) -> Result<(), String> {
         return Err("Invalid dlp_action value. Must be 'redact' or 'block'".to_string());
     }
 
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('dlp_action', ?1)",

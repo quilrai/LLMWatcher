@@ -256,12 +256,6 @@ async fn before_submit_prompt_handler(
     State(state): State<CursorHooksState>,
     Json(raw_json): Json<Value>,
 ) -> impl IntoResponse {
-    // Log raw JSON to debug attachment structure
-    println!(
-        "[CURSOR_HOOK] before_submit_prompt - raw JSON: {}",
-        serde_json::to_string_pretty(&raw_json).unwrap_or_default()
-    );
-
     let input: BeforeSubmitPromptInput = match serde_json::from_value(raw_json) {
         Ok(v) => v,
         Err(e) => {
@@ -288,15 +282,7 @@ async fn before_submit_prompt_handler(
 
     // Also check attached files
     for attachment in &input.attachments {
-        println!(
-            "[CURSOR_HOOK] before_submit_prompt - attachment raw: {:?}",
-            attachment
-        );
         if let (Some(file_path), Some(att_type)) = (&attachment.file_path, &attachment.attachment_type) {
-            println!(
-                "[CURSOR_HOOK] before_submit_prompt - processing attachment: {} (type: {})",
-                file_path, att_type
-            );
             if att_type == "file" {
                 // Read and check the file content
                 match std::fs::read_to_string(file_path) {
@@ -429,10 +415,6 @@ async fn before_read_file_handler(
     if let Some(attachments) = &input.attachments {
         for attachment in attachments {
             if let (Some(file_path), Some(att_type)) = (&attachment.file_path, &attachment.attachment_type) {
-                println!(
-                    "[CURSOR_HOOK] before_read_file - processing attachment: {} (type: {})",
-                    file_path, att_type
-                );
                 if att_type == "file" {
                     match std::fs::read_to_string(file_path) {
                         Ok(att_content) => {

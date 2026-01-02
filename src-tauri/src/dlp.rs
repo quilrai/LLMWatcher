@@ -1,6 +1,6 @@
 // DLP (Data Loss Prevention) Redaction Logic
 
-use crate::dlp_pattern_config::DB_PATH;
+use crate::dlp_pattern_config::get_db_path;
 use regex::Regex;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
@@ -36,7 +36,7 @@ pub struct CompiledDlpPattern {
 pub fn get_enabled_dlp_patterns() -> Vec<CompiledDlpPattern> {
     let mut patterns: Vec<CompiledDlpPattern> = Vec::new();
 
-    let conn = match Connection::open(DB_PATH) {
+    let conn = match Connection::open(get_db_path()) {
         Ok(c) => c,
         Err(_) => return patterns,
     };
@@ -165,16 +165,13 @@ pub fn apply_dlp_redaction(body: &str) -> DlpRedactionResult {
 
     // Process Claude format: messages array
     if let Some(messages) = json.get_mut("messages").and_then(|m| m.as_array_mut()) {
-        println!("[DLP] Processing {} Claude messages", messages.len());
         for (msg_idx, message) in messages.iter_mut().enumerate() {
             // Only process user messages (skip assistant, system handled separately)
             let role = message.get("role").and_then(|r| r.as_str()).unwrap_or("");
             if role != "user" {
-                println!("[DLP] Skipping message {} with role: {}", msg_idx, role);
                 continue;
             }
 
-            println!("[DLP] Processing user message {}", msg_idx);
             // Recursively process entire content structure
             if let Some(content) = message.get_mut("content") {
                 redact_value_recursive(
@@ -186,13 +183,11 @@ pub fn apply_dlp_redaction(body: &str) -> DlpRedactionResult {
                     Some(msg_idx as i32),
                 );
             }
-            println!("[DLP] Done processing user message {}", msg_idx);
         }
     }
 
     // Process Codex format: input array
     if let Some(input) = json.get_mut("input").and_then(|m| m.as_array_mut()) {
-        println!("[DLP] Processing {} Codex input items", input.len());
         for (item_idx, item) in input.iter_mut().enumerate() {
             let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
@@ -201,11 +196,9 @@ pub fn apply_dlp_redaction(body: &str) -> DlpRedactionResult {
                     // Only process user messages
                     let role = item.get("role").and_then(|r| r.as_str()).unwrap_or("");
                     if role != "user" {
-                        println!("[DLP] Skipping Codex message {} with role: {}", item_idx, role);
                         continue;
                     }
 
-                    println!("[DLP] Processing Codex user message {}", item_idx);
                     // Process content array (contains {type: "input_text", text: "..."} items)
                     if let Some(content) = item.get_mut("content") {
                         redact_value_recursive(
@@ -220,7 +213,6 @@ pub fn apply_dlp_redaction(body: &str) -> DlpRedactionResult {
                 }
                 "function_call_output" => {
                     // Function call outputs may contain sensitive data echoed back
-                    println!("[DLP] Processing Codex function_call_output {}", item_idx);
                     if let Some(output) = item.get_mut("output") {
                         redact_value_recursive(
                             output,
@@ -234,7 +226,6 @@ pub fn apply_dlp_redaction(body: &str) -> DlpRedactionResult {
                 }
                 _ => {
                     // Skip reasoning, function_call, etc.
-                    println!("[DLP] Skipping Codex item {} with type: {}", item_idx, item_type);
                 }
             }
         }
@@ -263,23 +254,16 @@ fn redact_value_recursive(
 ) {
     match value {
         serde_json::Value::String(s) => {
-            let len = s.len();
-            if len > 100 {
-                println!("[DLP-R] Processing string of length {}", len);
-            }
             let redacted = redact_text(s, patterns, replacements, detections, counter, message_index);
             *s = redacted;
         }
         serde_json::Value::Array(arr) => {
-            println!("[DLP-R] Processing array of {} items", arr.len());
             for item in arr.iter_mut() {
                 redact_value_recursive(item, patterns, replacements, detections, counter, message_index);
             }
         }
         serde_json::Value::Object(obj) => {
-            println!("[DLP-R] Processing object with {} keys", obj.len());
-            for (key, v) in obj.iter_mut() {
-                println!("[DLP-R] Processing key: {}", key);
+            for (_key, v) in obj.iter_mut() {
                 redact_value_recursive(v, patterns, replacements, detections, counter, message_index);
             }
         }
@@ -338,22 +322,11 @@ fn redact_text(
     message_index: Option<i32>,
 ) -> String {
     let mut result = text.to_string();
-    let text_len = text.len();
 
     for pattern in patterns {
-        println!(
-            "[DLP-T] Checking pattern '{}' ({} regexes) against text of len {}",
-            pattern.name,
-            pattern.regexes.len(),
-            text_len
-        );
-
         // Collect all matches from all regexes for this pattern
         let mut all_matches: Vec<String> = Vec::new();
-        for (regex_idx, regex) in pattern.regexes.iter().enumerate() {
-            if text_len > 1000 {
-                println!("[DLP-T] Running regex {} of {}", regex_idx + 1, pattern.regexes.len());
-            }
+        for regex in pattern.regexes.iter() {
             let matches: Vec<String> = regex
                 .find_iter(&result)
                 .map(|m| m.as_str().to_string())
@@ -363,12 +336,6 @@ fn redact_text(
 
         // Check min_occurrences threshold
         if (all_matches.len() as i32) < pattern.min_occurrences {
-            println!(
-                "[DLP-T] Pattern '{}' has {} matches, below min_occurrences {}",
-                pattern.name,
-                all_matches.len(),
-                pattern.min_occurrences
-            );
             continue;
         }
 
@@ -377,22 +344,12 @@ fn redact_text(
             if pattern.min_unique_chars > 0 {
                 let unique_count = count_unique_chars(&matched);
                 if (unique_count as i32) < pattern.min_unique_chars {
-                    println!(
-                        "[DLP-T] Match '{}' has {} unique chars, below min {} - skipping",
-                        &matched[..matched.len().min(20)],
-                        unique_count,
-                        pattern.min_unique_chars
-                    );
                     continue;
                 }
             }
 
             // Check negative patterns (exclusions)
             if is_excluded_by_negative(&matched, &pattern.negative_regexes) {
-                println!(
-                    "[DLP-T] Match '{}' excluded by negative pattern - skipping",
-                    &matched[..matched.len().min(20)]
-                );
                 continue;
             }
 
