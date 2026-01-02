@@ -508,4 +508,31 @@
     background: #7f1d1d;
     color: #fca5a5;
   }
+
+  /* Cursor Hooks Section */
+  .cursor-hooks-section {
+    background: #12121f;
+  }
+
+  .cursor-hooks-status {
+    color: #aaa;
+  }
+
+  /* Cursor Info */
+  .cursor-info {
+    background: #12121f;
+  }
+
+  .cursor-info h4 {
+    color: #e8e8e8;
+  }
+
+  .cursor-info li {
+    color: #aaa;
+  }
+
+  .cursor-info code {
+    background: #1a1a2e;
+    color: #e8e8e8;
+  }
 }

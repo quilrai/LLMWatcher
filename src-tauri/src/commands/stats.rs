@@ -462,6 +462,24 @@ fn get_tool_env_config(tool: &str) -> Result<(&'static str, &'static str), Strin
     }
 }
 
+// Find fish shell binary - macOS apps don't inherit shell PATH
+fn find_fish_binary() -> Option<&'static str> {
+    const FISH_PATHS: &[&str] = &[
+        "/opt/homebrew/bin/fish",  // Homebrew on Apple Silicon
+        "/usr/local/bin/fish",     // Homebrew on Intel Mac
+        "/opt/local/bin/fish",     // MacPorts
+        "/usr/bin/fish",           // System install
+        "/bin/fish",               // Unlikely but check
+    ];
+
+    for path in FISH_PATHS {
+        if std::path::Path::new(path).exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
     let port = *PROXY_PORT.lock().unwrap();
@@ -471,15 +489,31 @@ pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
     match shell.as_str() {
         "fish" => {
             // Fish: use set -Ux for universal export (persists automatically)
-            let output = std::process::Command::new("fish")
-                .args(["-c", &format!("set -Ux {} \"{}\"", env_var, base_url)])
+            let manual_cmd = format!("set -Ux {} \"{}\"", env_var, base_url);
+
+            let fish_path = match find_fish_binary() {
+                Some(path) => path,
+                None => return Err(format!(
+                    "Automated env variable update failed. Please set manually in fish:\n{}",
+                    manual_cmd
+                )),
+            };
+
+            let output = std::process::Command::new(fish_path)
+                .args(["-c", &manual_cmd])
                 .output()
-                .map_err(|e| format!("Failed to run fish: {}", e))?;
+                .map_err(|_| format!(
+                    "Automated env variable update failed. Please set manually in fish:\n{}",
+                    manual_cmd
+                ))?;
 
             if output.status.success() {
                 Ok(format!("{} set globally for Fish", env_var))
             } else {
-                Err(String::from_utf8_lossy(&output.stderr).to_string())
+                Err(format!(
+                    "Automated env variable update failed. Please set manually in fish:\n{}",
+                    manual_cmd
+                ))
             }
         }
         "bash" => {
@@ -488,8 +522,13 @@ pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
             let bashrc_path = format!("{}/.bashrc", home);
             let export_line = format!("export {}=\"{}\"", env_var, base_url);
 
-            update_shell_config(&bashrc_path, &export_line, env_var)?;
-            Ok(format!("{} added to ~/.bashrc. Run 'source ~/.bashrc' or restart your terminal.", env_var))
+            match update_shell_config(&bashrc_path, &export_line, env_var) {
+                Ok(_) => Ok(format!("{} added to ~/.bashrc. Run 'source ~/.bashrc' or restart your terminal.", env_var)),
+                Err(_) => Err(format!(
+                    "Automated env variable update failed. Please add manually to ~/.bashrc:\n{}",
+                    export_line
+                )),
+            }
         }
         "zsh" => {
             // Zsh: append to ~/.zshrc
@@ -497,8 +536,13 @@ pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
             let zshrc_path = format!("{}/.zshrc", home);
             let export_line = format!("export {}=\"{}\"", env_var, base_url);
 
-            update_shell_config(&zshrc_path, &export_line, env_var)?;
-            Ok(format!("{} added to ~/.zshrc. Run 'source ~/.zshrc' or restart your terminal.", env_var))
+            match update_shell_config(&zshrc_path, &export_line, env_var) {
+                Ok(_) => Ok(format!("{} added to ~/.zshrc. Run 'source ~/.zshrc' or restart your terminal.", env_var)),
+                Err(_) => Err(format!(
+                    "Automated env variable update failed. Please add manually to ~/.zshrc:\n{}",
+                    export_line
+                )),
+            }
         }
         _ => Err(format!("Unknown shell: {}", shell)),
     }
@@ -511,7 +555,10 @@ pub fn check_shell_env(shell: String, tool: String) -> Result<bool, String> {
     match shell.as_str() {
         "fish" => {
             // Fish: check if universal variable is set
-            let output = std::process::Command::new("fish")
+            let fish_path = find_fish_binary()
+                .ok_or_else(|| "Fish shell not found. Please install fish or check your installation.".to_string())?;
+
+            let output = std::process::Command::new(fish_path)
                 .args(["-c", &format!("set -q {}; and echo 1; or echo 0", env_var)])
                 .output()
                 .map_err(|e| format!("Failed to run fish: {}", e))?;
@@ -553,28 +600,54 @@ pub fn remove_shell_env(shell: String, tool: String) -> Result<String, String> {
     match shell.as_str() {
         "fish" => {
             // Fish: erase universal variable
-            let output = std::process::Command::new("fish")
-                .args(["-c", &format!("set -Ue {}", env_var)])
+            let manual_cmd = format!("set -Ue {}", env_var);
+
+            let fish_path = match find_fish_binary() {
+                Some(path) => path,
+                None => return Err(format!(
+                    "Automated env variable removal failed. Please remove manually in fish:\n{}",
+                    manual_cmd
+                )),
+            };
+
+            let output = std::process::Command::new(fish_path)
+                .args(["-c", &manual_cmd])
                 .output()
-                .map_err(|e| format!("Failed to run fish: {}", e))?;
+                .map_err(|_| format!(
+                    "Automated env variable removal failed. Please remove manually in fish:\n{}",
+                    manual_cmd
+                ))?;
 
             if output.status.success() {
                 Ok(format!("{} removed from Fish", env_var))
             } else {
-                Err(String::from_utf8_lossy(&output.stderr).to_string())
+                Err(format!(
+                    "Automated env variable removal failed. Please remove manually in fish:\n{}",
+                    manual_cmd
+                ))
             }
         }
         "bash" => {
             let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
             let bashrc_path = format!("{}/.bashrc", home);
-            remove_env_from_config(&bashrc_path, env_var)?;
-            Ok(format!("{} removed from ~/.bashrc. Restart your terminal.", env_var))
+            match remove_env_from_config(&bashrc_path, env_var) {
+                Ok(_) => Ok(format!("{} removed from ~/.bashrc. Restart your terminal.", env_var)),
+                Err(_) => Err(format!(
+                    "Automated env variable removal failed. Please remove 'export {}=...' from ~/.bashrc manually.",
+                    env_var
+                )),
+            }
         }
         "zsh" => {
             let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
             let zshrc_path = format!("{}/.zshrc", home);
-            remove_env_from_config(&zshrc_path, env_var)?;
-            Ok(format!("{} removed from ~/.zshrc. Restart your terminal.", env_var))
+            match remove_env_from_config(&zshrc_path, env_var) {
+                Ok(_) => Ok(format!("{} removed from ~/.zshrc. Restart your terminal.", env_var)),
+                Err(_) => Err(format!(
+                    "Automated env variable removal failed. Please remove 'export {}=...' from ~/.zshrc manually.",
+                    env_var
+                )),
+            }
         }
         _ => Err(format!("Unknown shell: {}", shell)),
     }
