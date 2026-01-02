@@ -362,6 +362,57 @@
   border-top: 1px solid #e5e7eb;
 }
 
+/* Warning Modal Content */
+.warning-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.warning-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.warning-item.warning-caution {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.warning-item.warning-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.warning-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.warning-text {
+  flex: 1;
+}
+
+.warning-text strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #111827;
+}
+
+.warning-text p {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* JSON Modal (logs viewer) */
 .json-modal {
   position: fixed;

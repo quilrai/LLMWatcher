@@ -370,6 +370,30 @@
     border-top-color: #2a2a3e;
   }
 
+  /* Warning Modal */
+  .warning-item {
+    background: #1a2e1a;
+    border-color: #2d5a2d;
+  }
+
+  .warning-item.warning-caution {
+    background: #2e2a1a;
+    border-color: #5a4a2d;
+  }
+
+  .warning-item.warning-info {
+    background: #1a1a2e;
+    border-color: #2d2d5a;
+  }
+
+  .warning-text strong {
+    color: #e8e8e8;
+  }
+
+  .warning-text p {
+    color: #a0a0a0;
+  }
+
   /* Forms */
   .form-group label {
     color: #e8e8e8;

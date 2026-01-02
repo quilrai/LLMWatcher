@@ -160,6 +160,50 @@ async function saveDlpActionSetting(action) {
   }
 }
 
+// Show redact warning modal
+function showRedactWarningModal() {
+  const modal = document.getElementById('redact-warning-modal');
+  if (modal) {
+    modal.classList.add('show');
+  }
+}
+
+// Hide redact warning modal
+function hideRedactWarningModal() {
+  const modal = document.getElementById('redact-warning-modal');
+  if (modal) {
+    modal.classList.remove('show');
+  }
+}
+
+// Initialize redact warning modal handlers
+function initRedactWarningModal() {
+  const closeBtn = document.getElementById('close-redact-modal');
+  const cancelBtn = document.getElementById('cancel-redact-btn');
+  const confirmBtn = document.getElementById('confirm-redact-btn');
+  const toggle = document.getElementById('dlp-action-toggle');
+  const labelRedact = document.getElementById('dlp-action-label-redact');
+  const labelBlock = document.getElementById('dlp-action-label-block');
+
+  const revertToggle = () => {
+    if (toggle) {
+      toggle.checked = true; // Revert to block
+      updateDlpActionUI(true, labelRedact, labelBlock);
+    }
+    hideRedactWarningModal();
+  };
+
+  if (closeBtn) closeBtn.addEventListener('click', revertToggle);
+  if (cancelBtn) cancelBtn.addEventListener('click', revertToggle);
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      hideRedactWarningModal();
+      saveDlpActionSetting('redact');
+    });
+  }
+}
+
 // Initialize DLP action toggle
 function initDlpActionToggle() {
   const toggle = document.getElementById('dlp-action-toggle');
@@ -168,11 +212,21 @@ function initDlpActionToggle() {
 
   if (toggle) {
     toggle.addEventListener('change', () => {
-      const action = toggle.checked ? 'block' : 'redact';
-      updateDlpActionUI(toggle.checked, labelRedact, labelBlock);
-      saveDlpActionSetting(action);
+      const isBlock = toggle.checked;
+      updateDlpActionUI(isBlock, labelRedact, labelBlock);
+
+      if (isBlock) {
+        // Switching to block - save immediately
+        saveDlpActionSetting('block');
+      } else {
+        // Switching to redact - show warning modal first
+        showRedactWarningModal();
+      }
     });
   }
+
+  // Initialize modal handlers
+  initRedactWarningModal();
 
   // Load initial state
   loadDlpActionSetting();

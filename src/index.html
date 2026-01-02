@@ -185,6 +185,45 @@
           </div>
         </div>
 
+        <!-- Redact Warning Modal -->
+        <div id="redact-warning-modal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Enable Redact Mode?</h3>
+              <button class="modal-close" id="close-redact-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <div class="warning-content">
+                <div class="warning-item">
+                  <div class="warning-icon">✓</div>
+                  <div class="warning-text">
+                    <strong>Seamless redaction</strong>
+                    <p>Sensitive info is redacted before sending to LLM and restored in responses, allowing coding agents to function normally.</p>
+                  </div>
+                </div>
+                <div class="warning-item warning-caution">
+                  <div class="warning-icon">⚠</div>
+                  <div class="warning-text">
+                    <strong>Potential file edit issues</strong>
+                    <p>May occasionally cause failures when editing files due to context mismatch.</p>
+                  </div>
+                </div>
+                <div class="warning-item warning-info">
+                  <div class="warning-icon">ℹ</div>
+                  <div class="warning-text">
+                    <strong>Cursor compatibility</strong>
+                    <p>Cursor only supports Block mode.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="cancel-redact-btn">Cancel</button>
+              <button class="btn btn-primary" id="confirm-redact-btn">Enable Redact</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Add/Edit Pattern Modal -->
         <div id="pattern-modal" class="modal">
           <div class="modal-content modal-content-lg">
