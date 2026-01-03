@@ -1,8 +1,8 @@
 // HTTP Proxy Server and Handler
 
-use crate::backends::{Backend, ClaudeBackend, CodexBackend};
+use crate::backends::{Backend, ClaudeBackend, CodexBackend, CustomBackend};
 use crate::cursor_hooks::create_cursor_hooks_router;
-use crate::database::{get_dlp_action_from_db, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED};
+use crate::database::{get_dlp_action_from_db, get_enabled_custom_backends_from_db, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED};
 use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction, DlpDetection};
 use crate::dlp_pattern_config::get_db_path;
 use crate::requestresponsemetadata::ResponseMetadata;
@@ -327,7 +327,7 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                     &backend_name,
                     &method_str,
                     &path_clone,
-                    "Messages",
+                    &path_clone,  // Use actual path as endpoint name
                     &req_body_clone,
                     &unredacted_response,
                     status_code,
@@ -404,7 +404,7 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                 backend.name(),
                 &method_str,
                 &full_path,
-                "Messages",
+                &full_path,  // Use actual path as endpoint name
                 &request_body_str,
                 &unredacted_response,
                 status.as_u16(),
@@ -481,11 +481,32 @@ pub async fn start_proxy_server() {
         // Create cursor hooks router
         let cursor_hooks_router = create_cursor_hooks_router(db.clone());
 
-        let app = Router::new()
+        // Build base app with builtin backends
+        let mut app = Router::new()
             .route("/", get(health_handler))
             .nest("/claude", claude_router)
             .nest("/codex", codex_router)
             .nest("/cursor_hook", cursor_hooks_router);
+
+        // Load and add custom backends
+        let custom_backends = get_enabled_custom_backends_from_db();
+        for backend_record in custom_backends {
+            let custom_backend: Arc<dyn Backend> = Arc::new(CustomBackend::new(
+                backend_record.name.clone(),
+                backend_record.base_url.clone(),
+            ));
+            let custom_state = ProxyState {
+                db: db.clone(),
+                backend: custom_backend,
+            };
+            let custom_router = Router::new()
+                .fallback(proxy_handler)
+                .with_state(custom_state);
+
+            let route_path = format!("/{}", backend_record.name);
+            println!("[PROXY] Registering custom backend: {} -> {}", route_path, backend_record.base_url);
+            app = app.nest(&route_path, custom_router);
+        }
 
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let listener = match TcpListener::bind(addr).await {

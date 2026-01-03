@@ -23,7 +23,7 @@ function updateProxyStatusDisplay(port, isRestarting = false) {
   const statusDot = document.getElementById('proxy-status-dot');
 
   if (statusText) {
-    statusText.textContent = `Proxy: localhost:${port}`;
+    statusText.textContent = `Running at localhost:${port}`;
   }
 
   if (statusDot) {

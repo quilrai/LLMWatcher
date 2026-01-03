@@ -147,6 +147,25 @@ impl Database {
             [],
         )?;
 
+        // Create custom backends table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS custom_backends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                base_url TEXT NOT NULL,
+                settings TEXT DEFAULT '{}',
+                enabled INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Create index for faster backend name lookups
+        let _ = conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_backends_name ON custom_backends(name)",
+            [],
+        );
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -473,6 +492,160 @@ impl Database {
 
         Ok(rows_affected > 0)
     }
+
+    // ========================================================================
+    // Custom Backends Methods
+    // ========================================================================
+
+    /// Get all custom backends
+    pub fn get_custom_backends(&self) -> Result<Vec<CustomBackendRecord>, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, base_url, settings, enabled, created_at FROM custom_backends ORDER BY created_at DESC",
+        )?;
+
+        let backends = stmt
+            .query_map([], |row| {
+                Ok(CustomBackendRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    base_url: row.get(2)?,
+                    settings: row.get(3)?,
+                    enabled: row.get::<_, i32>(4)? == 1,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(backends)
+    }
+
+    /// Get enabled custom backends only
+    pub fn get_enabled_custom_backends(&self) -> Result<Vec<CustomBackendRecord>, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, base_url, settings, enabled, created_at FROM custom_backends WHERE enabled = 1 ORDER BY created_at DESC",
+        )?;
+
+        let backends = stmt
+            .query_map([], |row| {
+                Ok(CustomBackendRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    base_url: row.get(2)?,
+                    settings: row.get(3)?,
+                    enabled: row.get::<_, i32>(4)? == 1,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(backends)
+    }
+
+    /// Add a new custom backend
+    pub fn add_custom_backend(
+        &self,
+        name: &str,
+        base_url: &str,
+        settings: &str,
+    ) -> Result<i64, rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        let created_at = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO custom_backends (name, base_url, settings, enabled, created_at) VALUES (?1, ?2, ?3, 1, ?4)",
+            rusqlite::params![name, base_url, settings, created_at],
+        )?;
+
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Update a custom backend
+    pub fn update_custom_backend(
+        &self,
+        id: i64,
+        name: &str,
+        base_url: &str,
+        settings: &str,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            "UPDATE custom_backends SET name = ?1, base_url = ?2, settings = ?3 WHERE id = ?4",
+            rusqlite::params![name, base_url, settings, id],
+        )?;
+
+        Ok(())
+    }
+
+    /// Toggle a custom backend enabled/disabled
+    pub fn toggle_custom_backend(&self, id: i64, enabled: bool) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            "UPDATE custom_backends SET enabled = ?1 WHERE id = ?2",
+            rusqlite::params![enabled as i32, id],
+        )?;
+
+        Ok(())
+    }
+
+    /// Delete a custom backend
+    pub fn delete_custom_backend(&self, id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute("DELETE FROM custom_backends WHERE id = ?1", rusqlite::params![id])?;
+
+        Ok(())
+    }
+
+    /// Check if a backend name already exists (reserved or custom)
+    pub fn backend_name_exists(&self, name: &str) -> Result<bool, rusqlite::Error> {
+        // Check reserved names first
+        let reserved = ["claude", "codex", "cursor_hook", "cursor-hooks"];
+        if reserved.contains(&name.to_lowercase().as_str()) {
+            return Ok(true);
+        }
+
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM custom_backends WHERE LOWER(name) = LOWER(?1)",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )?;
+
+        Ok(count > 0)
+    }
+
+    /// Check if a backend name exists excluding a specific id (for updates)
+    pub fn backend_name_exists_excluding(&self, name: &str, exclude_id: i64) -> Result<bool, rusqlite::Error> {
+        // Check reserved names first
+        let reserved = ["claude", "codex", "cursor_hook", "cursor-hooks"];
+        if reserved.contains(&name.to_lowercase().as_str()) {
+            return Ok(true);
+        }
+
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM custom_backends WHERE LOWER(name) = LOWER(?1) AND id != ?2",
+            rusqlite::params![name, exclude_id],
+            |row| row.get(0),
+        )?;
+
+        Ok(count > 0)
+    }
+}
+
+/// Custom backend record from database
+#[derive(Debug, Clone)]
+pub struct CustomBackendRecord {
+    pub id: i64,
+    pub name: String,
+    pub base_url: String,
+    pub settings: String,
+    pub enabled: bool,
+    pub created_at: String,
 }
 
 // Port management helpers
@@ -548,5 +721,48 @@ pub fn save_dlp_action_to_db(action: &str) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// Custom backends helpers
+
+/// Get enabled custom backends (standalone function for proxy startup)
+pub fn get_enabled_custom_backends_from_db() -> Vec<CustomBackendRecord> {
+    let conn = match Connection::open(get_db_path()) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Ensure custom_backends table exists
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS custom_backends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            base_url TEXT NOT NULL,
+            settings TEXT DEFAULT '{}',
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+        )",
+        [],
+    );
+
+    let mut stmt = match conn.prepare(
+        "SELECT id, name, base_url, settings, enabled, created_at FROM custom_backends WHERE enabled = 1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    stmt.query_map([], |row| {
+        Ok(CustomBackendRecord {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            base_url: row.get(2)?,
+            settings: row.get(3)?,
+            enabled: row.get::<_, i32>(4)? == 1,
+            created_at: row.get(5)?,
+        })
+    })
+    .map(|iter| iter.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
 }
 

@@ -2,6 +2,7 @@
 
 pub mod claude;
 pub mod codex;
+pub mod custom;
 
 use axum::http::HeaderMap;
 use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
@@ -10,10 +11,10 @@ use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
 /// Each backend (Claude, OpenAI, Gemini, etc.) implements this trait
 pub trait Backend: Send + Sync {
     /// Returns the backend name (e.g., "claude", "openai", "gemini")
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
 
     /// Returns the base URL for this backend's API
-    fn base_url(&self) -> &'static str;
+    fn base_url(&self) -> &str;
 
     /// Parse request body to extract metadata
     fn parse_request_metadata(&self, body: &str) -> RequestMetadata;
@@ -41,3 +42,4 @@ pub trait Backend: Send + Sync {
 // Re-export backends for convenience
 pub use claude::ClaudeBackend;
 pub use codex::CodexBackend;
+pub use custom::CustomBackend;

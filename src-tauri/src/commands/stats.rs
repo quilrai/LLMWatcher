@@ -98,9 +98,6 @@ fn get_cutoff_timestamp(hours: i64) -> String {
     cutoff.to_rfc3339()
 }
 
-// Endpoint filter to include both proxy and cursor hook requests
-const ENDPOINT_FILTER: &str = "endpoint_name IN ('Messages', 'CursorChat', 'CursorTab')";
-
 #[tauri::command]
 pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<DashboardData, String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
@@ -120,10 +117,10 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
         .prepare(&format!(
             "SELECT COALESCE(model, 'unknown') as model, COUNT(*) as count
              FROM requests
-             WHERE {} AND model IS NOT NULL AND timestamp >= ?1{}
+             WHERE model IS NOT NULL AND timestamp >= ?1{}
              GROUP BY model
              ORDER BY count DESC",
-            ENDPOINT_FILTER, backend_filter
+            backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -148,8 +145,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     COALESCE(SUM(has_thinking), 0),
                     COUNT(*)
                  FROM requests
-                 WHERE {} AND timestamp >= ?1{}",
-                ENDPOINT_FILTER, backend_filter
+                 WHERE timestamp >= ?1{}",
+                backend_filter
             ),
             [&cutoff_ts],
             |row| {
@@ -178,8 +175,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     COALESCE(SUM(cache_read_tokens), 0),
                     COALESCE(SUM(cache_creation_tokens), 0)
                  FROM requests
-                 WHERE {} AND timestamp >= ?1{}",
-                ENDPOINT_FILTER, backend_filter
+                 WHERE timestamp >= ?1{}",
+                backend_filter
             ),
             [&cutoff_ts],
             |row| {
@@ -205,10 +202,10 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
                     cache_read_tokens, cache_creation_tokens, latency_ms,
                     COALESCE(stop_reason, 'unknown'), has_thinking
              FROM requests
-             WHERE {} AND timestamp >= ?1{}
+             WHERE timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 20",
-            ENDPOINT_FILTER, backend_filter
+            backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -236,10 +233,10 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
         .prepare(&format!(
             "SELECT id, latency_ms
              FROM requests
-             WHERE {} AND latency_ms > 0 AND timestamp >= ?1{}
+             WHERE latency_ms > 0 AND timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 50",
-            ENDPOINT_FILTER, backend_filter
+            backend_filter
         ))
         .map_err(|e| e.to_string())?;
 
@@ -258,8 +255,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
     let total_requests: i64 = conn
         .query_row(
             &format!(
-                "SELECT COUNT(*) FROM requests WHERE {} AND timestamp >= ?1{}",
-                ENDPOINT_FILTER, backend_filter
+                "SELECT COUNT(*) FROM requests WHERE timestamp >= ?1{}",
+                backend_filter
             ),
             [&cutoff_ts],
             |row| row.get(0),
@@ -271,8 +268,8 @@ pub fn get_dashboard_stats(time_range: String, backend: String) -> Result<Dashbo
             &format!(
                 "SELECT COALESCE(AVG(latency_ms), 0)
                  FROM requests
-                 WHERE {} AND latency_ms > 0 AND timestamp >= ?1{}",
-                ENDPOINT_FILTER, backend_filter
+                 WHERE latency_ms > 0 AND timestamp >= ?1{}",
+                backend_filter
             ),
             [&cutoff_ts],
             |row| row.get(0),
@@ -312,10 +309,7 @@ pub fn get_models() -> Result<Vec<String>, String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare(&format!(
-            "SELECT DISTINCT COALESCE(model, 'unknown') FROM requests WHERE {} ORDER BY model",
-            ENDPOINT_FILTER
-        ))
+        .prepare("SELECT DISTINCT COALESCE(model, 'unknown') FROM requests ORDER BY model")
         .map_err(|e| e.to_string())?;
 
     let models: Vec<String> = stmt
@@ -365,8 +359,8 @@ pub fn get_message_logs(
     let total: i64 = conn
         .query_row(
             &format!(
-                "SELECT COUNT(*) FROM requests WHERE {} AND timestamp >= ?1{}",
-                ENDPOINT_FILTER, filters
+                "SELECT COUNT(*) FROM requests WHERE timestamp >= ?1{}",
+                filters
             ),
             [&cutoff_ts],
             |row| row.get(0),
@@ -381,10 +375,10 @@ pub fn get_message_logs(
                     input_tokens, output_tokens, latency_ms, request_body, response_body,
                     request_headers, response_headers, COALESCE(dlp_action, 0)
              FROM requests
-             WHERE {} AND timestamp >= ?1{}
+             WHERE timestamp >= ?1{}
              ORDER BY id DESC
              LIMIT 50 OFFSET ?2",
-            ENDPOINT_FILTER, filters
+            filters
         ))
         .map_err(|e| e.to_string())?;
 

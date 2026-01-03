@@ -33,6 +33,10 @@
             <span class="nav-icon"><i data-lucide="settings"></i></span>
             Settings
           </li>
+          <li class="nav-item" data-tab="backends">
+            <span class="nav-icon"><i data-lucide="server"></i></span>
+            Backends
+          </li>
           <li class="nav-item" data-tab="howto">
             <span class="nav-icon"><i data-lucide="book-open"></i></span>
             How to use
@@ -41,7 +45,7 @@
         <div class="sidebar-footer">
           <div class="proxy-status">
             <span class="status-dot" id="proxy-status-dot"></span>
-            <span id="proxy-status-text">Proxy: localhost:8008</span>
+            <span id="proxy-status-text">Running at localhost:8008</span>
           </div>
         </div>
       </nav>
@@ -165,6 +169,64 @@
                 </div>
 
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Backends Tab -->
+        <div id="backends-tab" class="tab-content">
+          <h1>Custom Backends</h1>
+          <p class="page-subtitle">Add custom OpenAI-compatible API endpoints. After adding, restart the proxy to apply changes.</p>
+
+          <div class="settings-section">
+            <div class="card">
+              <div class="card-header">
+                <span>Registered Backends</span>
+                <button id="add-backend-btn" class="btn btn-primary btn-sm">
+                  <i data-lucide="plus"></i>
+                  Add Backend
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="backends-list" class="backends-list">
+                  <p class="empty-text">Loading backends...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add/Edit Backend Modal -->
+        <div id="backend-modal" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="backend-modal-title">Add Backend</h3>
+              <button class="modal-close" id="close-backend-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="backend-id" value="" />
+
+              <div class="form-group">
+                <label for="backend-name">Name</label>
+                <input type="text" id="backend-name" class="form-input" placeholder="e.g., openai, groq, together" />
+                <p class="form-hint">Alphanumeric, hyphens, underscores only. Used in URL: localhost:8008/<strong>name</strong>/...</p>
+              </div>
+
+              <div class="form-group">
+                <label for="backend-url">Base URL</label>
+                <input type="text" id="backend-url" class="form-input" placeholder="e.g., https://api.openai.com" />
+                <p class="form-hint">The API base URL. Requests to localhost:8008/name/* will be proxied to this URL.</p>
+              </div>
+
+              <div class="form-group">
+                <label for="backend-settings">Settings (JSON)</label>
+                <textarea id="backend-settings" class="form-textarea" rows="3" placeholder="{}">{}</textarea>
+                <p class="form-hint">Optional JSON settings for future use (rate limits, etc.)</p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="cancel-backend-btn">Cancel</button>
+              <button class="btn btn-primary" id="save-backend-btn">Save</button>
             </div>
           </div>
         </div>

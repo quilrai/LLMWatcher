@@ -53,9 +53,17 @@ pub static RESTART_SENDER: std::sync::LazyLock<Arc<Mutex<Option<watch::Sender<bo
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize reverse proxy port from database
+    // Initialize reverse proxy port from environment variable or database
     {
-        let port = get_port_from_db();
+        let port = std::env::var("QPORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or_else(get_port_from_db);
+
+        if std::env::var("QPORT").is_ok() {
+            println!("[PROXY] Using port {} from QPORT environment variable", port);
+        }
+
         let mut current_port = PROXY_PORT.lock().unwrap();
         *current_port = port;
     }
@@ -130,6 +138,12 @@ pub fn run() {
             commands::install_cursor_hooks,
             commands::uninstall_cursor_hooks,
             commands::check_cursor_hooks_installed,
+            // Custom backends commands
+            commands::get_custom_backends,
+            commands::add_custom_backend,
+            commands::update_custom_backend,
+            commands::toggle_custom_backend,
+            commands::delete_custom_backend,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -811,3 +811,150 @@
   border: none;
   font-size: 0.8rem;
 }
+
+/* ============ Backends Page ============ */
+
+.page-subtitle {
+  color: #666;
+  margin-bottom: 24px;
+  font-size: 0.95rem;
+}
+
+.backends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backends-empty {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.backends-empty .empty-hint {
+  color: #888;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+.backend-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.backend-item:hover {
+  background: #f0f1f3;
+  border-color: #d1d5db;
+}
+
+.backend-item.disabled {
+  opacity: 0.6;
+}
+
+.backend-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.backend-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.backend-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.backend-status {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.backend-status.enabled {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.backend-status.disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.backend-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 30px;
+}
+
+.backend-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.backend-label {
+  color: #666;
+  min-width: 80px;
+}
+
+.backend-url code {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #4338ca;
+  word-break: break-all;
+}
+
+.backend-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 16px;
+}
+
+.backend-edit,
+.backend-delete {
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.backend-edit:hover {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.backend-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.backend-edit svg,
+.backend-delete svg {
+  width: 16px;
+  height: 16px;
+}
