@@ -559,4 +559,74 @@
     background: #1a1a2e;
     color: #e8e8e8;
   }
+
+  /* Backends Page */
+  .page-subtitle {
+    color: #888;
+  }
+
+  .backend-item {
+    background: #12121f;
+    border-color: #2a2a3e;
+  }
+
+  .backend-item:hover {
+    background: #1a1a2e;
+    border-color: #3a3a4e;
+  }
+
+  .backend-name {
+    color: #e8e8e8;
+  }
+
+  .backend-label {
+    color: #888;
+  }
+
+  .backend-url code {
+    background: #1a1a2e;
+    border-color: #2a2a3e;
+    color: #a5b4fc;
+  }
+
+  .backend-setting-badge.dlp-on {
+    background: #14532d;
+    color: #86efac;
+  }
+
+  .backend-setting-badge.dlp-off {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .backend-setting-badge.rate-limit {
+    background: #2a2a4e;
+    color: #a5b4fc;
+  }
+
+  .backend-setting-badge.no-rate-limit {
+    background: #2a2a3e;
+    color: #888;
+  }
+
+  .form-divider {
+    border-top-color: #2a2a3e;
+  }
+
+  .form-section-title {
+    color: #e8e8e8;
+  }
+
+  .setting-toggle-row label {
+    color: #e8e8e8;
+  }
+
+  .rate-label {
+    color: #888;
+  }
+
+  .form-input:disabled {
+    background: #1a1a2e;
+    color: #666;
+  }
 }

@@ -3,6 +3,29 @@ import { invoke, getCurrentPort, escapeHtml } from './utils.js';
 // Store backends for editing
 let customBackends = [];
 
+// Parse settings JSON with defaults
+function parseSettings(settingsJson) {
+  try {
+    const settings = JSON.parse(settingsJson || '{}');
+    return {
+      dlp_enabled: settings.dlp_enabled !== false, // default true
+      rate_limit_requests: settings.rate_limit_requests || 0,
+      rate_limit_minutes: settings.rate_limit_minutes || 1
+    };
+  } catch {
+    return { dlp_enabled: true, rate_limit_requests: 0, rate_limit_minutes: 1 };
+  }
+}
+
+// Build settings JSON from form values
+function buildSettingsJson(dlpEnabled, rateRequests, rateMinutes) {
+  return JSON.stringify({
+    dlp_enabled: dlpEnabled,
+    rate_limit_requests: rateRequests,
+    rate_limit_minutes: rateMinutes
+  });
+}
+
 // Show status message
 function showBackendsStatus(message, type) {
   // Create or find status element
@@ -60,7 +83,16 @@ function renderBackends(backends) {
     return;
   }
 
-  container.innerHTML = backends.map(backend => `
+  container.innerHTML = backends.map(backend => {
+    const settings = parseSettings(backend.settings);
+    const dlpBadge = settings.dlp_enabled
+      ? '<span class="backend-setting-badge dlp-on">DLP On</span>'
+      : '<span class="backend-setting-badge dlp-off">DLP Off</span>';
+    const rateBadge = settings.rate_limit_requests > 0
+      ? `<span class="backend-setting-badge rate-limit">${settings.rate_limit_requests}/${settings.rate_limit_minutes}min</span>`
+      : '<span class="backend-setting-badge no-rate-limit">No Rate Limit</span>';
+
+    return `
     <div class="backend-item ${backend.enabled ? '' : 'disabled'}" data-id="${backend.id}">
       <div class="backend-info">
         <div class="backend-header">
@@ -78,6 +110,10 @@ function renderBackends(backends) {
             <code>${escapeHtml(backend.base_url)}</code>
           </div>
         </div>
+        <div class="backend-settings-summary">
+          ${dlpBadge}
+          ${rateBadge}
+        </div>
       </div>
       <div class="backend-actions">
         <button class="dlp-pattern-edit backend-edit" data-id="${backend.id}" title="Edit backend">
@@ -88,7 +124,8 @@ function renderBackends(backends) {
         </button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // Re-initialize Lucide icons
   lucide.createIcons();
@@ -147,16 +184,23 @@ function showBackendModal(backend = null) {
   const title = document.getElementById('backend-modal-title');
   const nameInput = document.getElementById('backend-name');
   const urlInput = document.getElementById('backend-url');
-  const settingsInput = document.getElementById('backend-settings');
+  const dlpEnabledInput = document.getElementById('backend-dlp-enabled');
+  const rateRequestsInput = document.getElementById('backend-rate-requests');
+  const rateMinutesInput = document.getElementById('backend-rate-minutes');
 
   // Set title
   title.textContent = backend ? 'Edit Backend' : 'Add Backend';
+
+  // Parse existing settings or use defaults
+  const settings = backend ? parseSettings(backend.settings) : { dlp_enabled: true, rate_limit_requests: 0, rate_limit_minutes: 1 };
 
   // Reset/populate form
   document.getElementById('backend-id').value = backend ? backend.id : '';
   nameInput.value = backend ? backend.name : '';
   urlInput.value = backend ? backend.base_url : '';
-  settingsInput.value = backend ? backend.settings : '{}';
+  dlpEnabledInput.checked = settings.dlp_enabled;
+  rateRequestsInput.value = settings.rate_limit_requests;
+  rateMinutesInput.value = settings.rate_limit_minutes;
 
   // If editing, disable name field (changing name not allowed)
   nameInput.disabled = !!backend;
@@ -185,7 +229,12 @@ async function saveBackend() {
   const id = document.getElementById('backend-id').value;
   const name = document.getElementById('backend-name').value.trim();
   const baseUrl = document.getElementById('backend-url').value.trim();
-  const settings = document.getElementById('backend-settings').value.trim() || '{}';
+  const dlpEnabled = document.getElementById('backend-dlp-enabled').checked;
+  const rateRequests = parseInt(document.getElementById('backend-rate-requests').value) || 0;
+  const rateMinutes = parseInt(document.getElementById('backend-rate-minutes').value) || 1;
+
+  // Build settings JSON
+  const settings = buildSettingsJson(dlpEnabled, rateRequests, Math.max(1, rateMinutes));
 
   // Validation
   if (!name) {
@@ -195,14 +244,6 @@ async function saveBackend() {
 
   if (!baseUrl) {
     alert('Please enter a base URL');
-    return;
-  }
-
-  // Validate settings JSON
-  try {
-    JSON.parse(settings);
-  } catch {
-    alert('Settings must be valid JSON');
     return;
   }
 

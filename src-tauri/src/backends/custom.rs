@@ -1,21 +1,50 @@
 // Custom Backend Implementation for OpenAI-compatible endpoints
 
 use axum::http::HeaderMap;
+use serde::{Deserialize, Serialize};
 
 use crate::backends::Backend;
 use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
+
+/// Settings for a custom backend
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CustomBackendSettings {
+    /// Whether DLP is enabled for this backend (default: true)
+    #[serde(default = "default_true")]
+    pub dlp_enabled: bool,
+    /// Rate limit: number of requests allowed (0 = no limit)
+    #[serde(default)]
+    pub rate_limit_requests: u32,
+    /// Rate limit: time window in minutes (default: 1)
+    #[serde(default = "default_one")]
+    pub rate_limit_minutes: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_one() -> u32 {
+    1
+}
 
 /// A custom backend that proxies to user-defined OpenAI-compatible endpoints
 pub struct CustomBackend {
     name: String,
     base_url: String,
+    settings: CustomBackendSettings,
 }
 
 impl CustomBackend {
-    pub fn new(name: String, base_url: String) -> Self {
+    pub fn new(name: String, base_url: String, settings_json: &str) -> Self {
         // Remove trailing slash from base_url if present
         let base_url = base_url.trim_end_matches('/').to_string();
-        Self { name, base_url }
+
+        // Parse settings from JSON, use defaults if parsing fails
+        let settings: CustomBackendSettings = serde_json::from_str(settings_json)
+            .unwrap_or_default();
+
+        Self { name, base_url, settings }
     }
 }
 
@@ -168,5 +197,13 @@ impl Backend for CustomBackend {
         } else {
             Some(serde_json::to_string(&extra).unwrap_or_default())
         }
+    }
+
+    fn is_dlp_enabled(&self) -> bool {
+        self.settings.dlp_enabled
+    }
+
+    fn get_rate_limit(&self) -> (u32, u32) {
+        (self.settings.rate_limit_requests, self.settings.rate_limit_minutes.max(1))
     }
 }

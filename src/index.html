@@ -218,10 +218,31 @@
                 <p class="form-hint">The API base URL. Requests to localhost:8008/name/* will be proxied to this URL.</p>
               </div>
 
+              <div class="form-divider"></div>
+              <h4 class="form-section-title">Settings</h4>
+
               <div class="form-group">
-                <label for="backend-settings">Settings (JSON)</label>
-                <textarea id="backend-settings" class="form-textarea" rows="3" placeholder="{}">{}</textarea>
-                <p class="form-hint">Optional JSON settings for future use (rate limits, etc.)</p>
+                <div class="setting-toggle-row">
+                  <div class="setting-toggle-info">
+                    <label>DLP Protection</label>
+                    <p class="form-hint">Apply DLP patterns to detect and handle sensitive data</p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="backend-dlp-enabled" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Rate Limit</label>
+                <div class="rate-limit-row">
+                  <input type="number" id="backend-rate-requests" class="form-input rate-input" min="0" value="0" />
+                  <span class="rate-label">requests per</span>
+                  <input type="number" id="backend-rate-minutes" class="form-input rate-input" min="1" value="1" />
+                  <span class="rate-label">minute(s)</span>
+                </div>
+                <p class="form-hint">Set to 0 requests to disable rate limiting</p>
               </div>
             </div>
             <div class="modal-footer">

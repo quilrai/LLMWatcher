@@ -37,6 +37,18 @@ pub trait Backend: Send + Sync {
     ) -> Option<String> {
         None
     }
+
+    /// Check if DLP is enabled for this backend
+    /// Default implementation returns true (DLP enabled)
+    fn is_dlp_enabled(&self) -> bool {
+        true
+    }
+
+    /// Get rate limit settings (requests per window, window in minutes)
+    /// Returns (0, 1) by default which means no rate limit
+    fn get_rate_limit(&self) -> (u32, u32) {
+        (0, 1)
+    }
 }
 
 // Re-export backends for convenience

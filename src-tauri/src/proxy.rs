@@ -2,7 +2,7 @@
 
 use crate::backends::{Backend, ClaudeBackend, CodexBackend, CustomBackend};
 use crate::cursor_hooks::create_cursor_hooks_router;
-use crate::database::{get_dlp_action_from_db, get_enabled_custom_backends_from_db, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED};
+use crate::database::{get_dlp_action_from_db, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED};
 use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction, DlpDetection};
 use crate::dlp_pattern_config::get_db_path;
 use crate::requestresponsemetadata::ResponseMetadata;
@@ -22,10 +22,55 @@ use reqwest::Client;
 use std::collections::HashMap;
 use std::io::Read;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
+
+/// Rate limiter for tracking request counts per backend
+#[derive(Clone, Default)]
+pub struct RateLimiter {
+    /// Map of backend_name -> list of request timestamps (in seconds since epoch)
+    requests: Arc<Mutex<HashMap<String, Vec<u64>>>>,
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Check if a request is allowed and record it if so
+    /// Returns true if allowed, false if rate limited
+    pub fn check_and_record(&self, backend_name: &str, max_requests: u32, window_minutes: u32) -> bool {
+        if max_requests == 0 {
+            return true; // No rate limit
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let window_secs = (window_minutes as u64) * 60;
+        let cutoff = now.saturating_sub(window_secs);
+
+        let mut requests = self.requests.lock().unwrap();
+        let timestamps = requests.entry(backend_name.to_string()).or_default();
+
+        // Remove old timestamps outside the window
+        timestamps.retain(|&ts| ts > cutoff);
+
+        // Check if we're at the limit
+        if timestamps.len() >= max_requests as usize {
+            return false;
+        }
+
+        // Record this request
+        timestamps.push(now);
+        true
+    }
+}
 
 /// Convert axum HeaderMap to JSON string
 fn headers_to_json(headers: &HeaderMap) -> String {
@@ -94,6 +139,7 @@ fn create_codex_error_response(pattern_names: &str) -> String {
 struct ProxyState {
     db: Database,
     backend: Arc<dyn Backend>,
+    rate_limiter: RateLimiter,
 }
 
 async fn health_handler() -> impl IntoResponse {
@@ -109,6 +155,7 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
     let client = Client::new();
     let backend = &state.backend;
     let db = &state.db;
+    let rate_limiter = &state.rate_limiter;
 
     let method = req.method().clone();
     // When using nest("/claude", ...), axum automatically strips the prefix
@@ -123,6 +170,28 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
 
     let target_url = format!("{}{}", backend.base_url(), full_path);
 
+    // Check rate limiting
+    let (rate_requests, rate_minutes) = backend.get_rate_limit();
+    if rate_requests > 0 && !rate_limiter.check_and_record(backend.name(), rate_requests, rate_minutes) {
+        println!(
+            "[PROXY] Rate limited request for backend '{}': {} requests per {} minute(s)",
+            backend.name(), rate_requests, rate_minutes
+        );
+        let error_body = serde_json::json!({
+            "error": {
+                "message": format!("Rate limit exceeded: {} requests per {} minute(s)", rate_requests, rate_minutes),
+                "type": "rate_limit_error",
+                "code": "rate_limit_exceeded"
+            }
+        }).to_string();
+        return Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .header("Content-Type", "application/json")
+            .header("Retry-After", (rate_minutes * 60).to_string())
+            .body(Body::from(error_body))
+            .unwrap();
+    }
+
     let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -136,14 +205,26 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
     let request_body_str = String::from_utf8_lossy(&body_bytes).to_string();
     let req_meta = backend.parse_request_metadata(&request_body_str);
 
-    // Apply DLP redaction to request body
-    let dlp_result = apply_dlp_redaction(&request_body_str);
+    // Check if DLP is enabled for this backend
+    let dlp_enabled = backend.is_dlp_enabled();
+
+    // Apply DLP redaction to request body (only if DLP is enabled)
+    let dlp_result = if dlp_enabled {
+        apply_dlp_redaction(&request_body_str)
+    } else {
+        // No DLP - pass through unchanged
+        crate::dlp::DlpRedactionResult {
+            redacted_body: request_body_str.clone(),
+            replacements: HashMap::new(),
+            detections: vec![],
+        }
+    };
     let redacted_body = dlp_result.redacted_body;
     let dlp_replacements = dlp_result.replacements;
 
     // Check if we should block (instead of redact) when DLP detections are found
     let dlp_action = get_dlp_action_from_db();
-    if dlp_action == "block" && !dlp_result.detections.is_empty() {
+    if dlp_enabled && dlp_action == "block" && !dlp_result.detections.is_empty() {
         println!(
             "[PROXY] Blocking request due to DLP detections: {} patterns",
             dlp_result.detections.len()
@@ -456,6 +537,9 @@ pub async fn start_proxy_server() {
             Err(e) => eprintln!("Failed to cleanup old data: {}", e),
         }
 
+        // Create shared rate limiter
+        let rate_limiter = RateLimiter::new();
+
         // Create backends
         let claude_backend: Arc<dyn Backend> = Arc::new(ClaudeBackend::new());
         let codex_backend: Arc<dyn Backend> = Arc::new(CodexBackend::new());
@@ -464,10 +548,12 @@ pub async fn start_proxy_server() {
         let claude_state = ProxyState {
             db: db.clone(),
             backend: claude_backend,
+            rate_limiter: rate_limiter.clone(),
         };
         let codex_state = ProxyState {
             db: db.clone(),
             backend: codex_backend,
+            rate_limiter: rate_limiter.clone(),
         };
 
         // Create routers for each backend
@@ -489,22 +575,45 @@ pub async fn start_proxy_server() {
             .nest("/cursor_hook", cursor_hooks_router);
 
         // Load and add custom backends
-        let custom_backends = get_enabled_custom_backends_from_db();
+        let custom_backends = Database::new(&get_db_path())
+            .ok()
+            .and_then(|db| db.get_enabled_custom_backends().ok())
+            .unwrap_or_default();
         for backend_record in custom_backends {
             let custom_backend: Arc<dyn Backend> = Arc::new(CustomBackend::new(
                 backend_record.name.clone(),
                 backend_record.base_url.clone(),
+                &backend_record.settings,
             ));
+
+            // Log rate limit and DLP status
+            let (rate_requests, rate_minutes) = custom_backend.get_rate_limit();
+            let dlp_status = if custom_backend.is_dlp_enabled() { "enabled" } else { "disabled" };
+
+            if rate_requests > 0 {
+                println!(
+                    "[PROXY] Custom backend '{}': rate limit {} requests per {} minute(s)",
+                    backend_record.name, rate_requests, rate_minutes
+                );
+            }
+
+            let route_path = format!("/{}", backend_record.name);
+            println!(
+                "[PROXY] Registering custom backend: {} -> {} (DLP: {})",
+                route_path,
+                backend_record.base_url,
+                dlp_status
+            );
+
             let custom_state = ProxyState {
                 db: db.clone(),
                 backend: custom_backend,
+                rate_limiter: rate_limiter.clone(),
             };
             let custom_router = Router::new()
                 .fallback(proxy_handler)
                 .with_state(custom_state);
 
-            let route_path = format!("/{}", backend_record.name);
-            println!("[PROXY] Registering custom backend: {} -> {}", route_path, backend_record.base_url);
             app = app.nest(&route_path, custom_router);
         }
 

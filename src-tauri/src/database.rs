@@ -723,46 +723,4 @@ pub fn save_dlp_action_to_db(action: &str) -> Result<(), String> {
     Ok(())
 }
 
-// Custom backends helpers
-
-/// Get enabled custom backends (standalone function for proxy startup)
-pub fn get_enabled_custom_backends_from_db() -> Vec<CustomBackendRecord> {
-    let conn = match Connection::open(get_db_path()) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    // Ensure custom_backends table exists
-    let _ = conn.execute(
-        "CREATE TABLE IF NOT EXISTS custom_backends (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            base_url TEXT NOT NULL,
-            settings TEXT DEFAULT '{}',
-            enabled INTEGER DEFAULT 1,
-            created_at TEXT NOT NULL
-        )",
-        [],
-    );
-
-    let mut stmt = match conn.prepare(
-        "SELECT id, name, base_url, settings, enabled, created_at FROM custom_backends WHERE enabled = 1",
-    ) {
-        Ok(s) => s,
-        Err(_) => return vec![],
-    };
-
-    stmt.query_map([], |row| {
-        Ok(CustomBackendRecord {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            base_url: row.get(2)?,
-            settings: row.get(3)?,
-            enabled: row.get::<_, i32>(4)? == 1,
-            created_at: row.get(5)?,
-        })
-    })
-    .map(|iter| iter.filter_map(|r| r.ok()).collect())
-    .unwrap_or_default()
-}
 
