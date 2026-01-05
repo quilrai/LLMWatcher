@@ -1,83 +1,26 @@
-# DLP Demo App
+# Quilr local agent gateway
 
-A Tauri-based proxy application for monitoring and applying DLP (Data Loss Prevention) to AI API requests.
+An local llm gateway for monitoring and controlling llm requests (from agents)
 
 ## Features
 
-- Proxy support for multiple AI backends (Claude, Codex)
-- DLP pattern detection and redaction
-- Request/response logging with metadata extraction
-- Flexible metadata storage for backend-specific data
+- Pass through proxy server for llm requests
+- Block or redact requests with sensitive information (pre-defined patterns and user defined patterns)
+- Warn or Block for high token count requests
+- Customizable rate limiting
+- Searchable Full request log with response
+- Fully on-device
 
-## Recommended IDE Setup
+## How it works
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- The app starts a local pass through server
+- claude code, codex and many other coding agents support customizable base url
+- with base url set for these agents, requests will be passed through the local server running in the app
+- patterns, blocking etc settings are applied (if configured) in the app
 
-## How to Use
+**cursor** Cursor does not provide a way to monitor / control data via network. For cursor, integration with hooks is implemented. note that cursor does not support auto redaction, exposing exact token counts etc
 
-### Starting the Proxy
+**Custom LLM endpoints**
+- In the app, you can configure a custom chat completions endpoint
+- This feature is useful if you are using your own token with a LLM endpoint, and you want to monitor / control data
 
-The proxy runs on `http://localhost:8008` by default (configurable).
-
-### Claude (Anthropic)
-
-Configure your Claude client to use the proxy:
-
-```bash
-# Environment variable
-ANTHROPIC_BASE_URL="http://localhost:8008/claude"
-
-# Or in your code
-client = Anthropic(base_url="http://localhost:8008/claude")
-```
-
-The proxy forwards requests to `https://api.anthropic.com`.
-
-### Codex (OpenAI GPT-5)
-
-Configure your Codex/OpenAI client to use the proxy:
-
-```bash
-# Environment variable
-OPENAI_BASE_URL="http://localhost:8008/codex"
-
-# Or in your code (for OpenAI-compatible clients)
-client = OpenAI(base_url="http://localhost:8008/codex")
-```
-
-The proxy forwards requests to `https://chatgpt.com/backend-api/codex`.
-
-## API Routes
-
-| Route | Backend | Upstream URL |
-|-------|---------|--------------|
-| `/` | Health check | - |
-| `/claude/*` | Claude | `https://api.anthropic.com` |
-| `/codex/*` | Codex | `https://chatgpt.com/backend-api/codex` |
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run tauri dev
-
-# Build for production
-npm run tauri build
-```
-
-## Adding New Backends
-
-To add a new backend (e.g., Gemini):
-
-1. Create `src-tauri/src/backends/gemini.rs` implementing the `Backend` trait
-2. Add `pub mod gemini;` and `pub use gemini::GeminiBackend;` to `src-tauri/src/backends/mod.rs`
-3. In `src-tauri/src/proxy.rs`:
-   - Create backend instance: `let gemini_backend: Arc<dyn Backend> = Arc::new(GeminiBackend::new());`
-   - Create state: `let gemini_state = ProxyState { db: db.clone(), backend: gemini_backend };`
-   - Create router: `let gemini_router = Router::new().fallback(proxy_handler).with_state(gemini_state);`
-   - Add route: `.nest("/gemini", gemini_router)`
-
-No database changes needed - use `extra_metadata` column for any backend-specific fields.
