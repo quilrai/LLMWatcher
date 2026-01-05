@@ -1,1 +1,0 @@
-APPLE_SIGNING_IDENTITY="Developer ID Application: Praneeth Bedapudi (TW92LP27VD)" APPLE_API_ISSUER=f03501b7-1c9f-4f6f-bfc9-2134f3d704fe APPLE_API_KEY=W6CQBUFHS4 APPLE_API_KEY_PATH=/Users/praneeth/Downloads/AuthKey_W6CQBUFHS4.p8 npm run tauri build
