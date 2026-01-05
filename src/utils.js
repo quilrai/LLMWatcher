@@ -49,6 +49,13 @@ export function setLogsDlpAction(value) {
   logsDlpAction = value;
 }
 
+// Logs search
+export let logsSearch = '';
+
+export function setLogsSearch(value) {
+  logsSearch = value;
+}
+
 // Logs pagination
 export let logsPage = 0;
 

@@ -22,6 +22,33 @@
     border-color: #818cf8;
   }
 
+  .search-box {
+    background: #1a1a2e;
+    border-color: #2a2a3e;
+  }
+
+  .search-box:focus-within {
+    border-color: #818cf8;
+  }
+
+  .search-input {
+    color: #e8e8e8;
+  }
+
+  .search-input::placeholder {
+    color: #6b7280;
+  }
+
+  .search-btn {
+    border-left-color: #2a2a3e;
+    color: #9ca3af;
+  }
+
+  .search-btn:hover {
+    background: #2a2a3e;
+    color: #818cf8;
+  }
+
   .icon-btn {
     background: #6366f1;
   }
@@ -186,6 +213,10 @@
 
   /* Pagination */
   #logs-tab .page-header {
+    background: #0f0f1a;
+  }
+
+  .logs-toolbar {
     background: #0f0f1a;
   }
 

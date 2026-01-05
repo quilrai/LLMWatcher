@@ -8,6 +8,8 @@ import {
   setLogsModel,
   logsDlpAction,
   setLogsDlpAction,
+  logsSearch,
+  setLogsSearch,
   logsPage,
   setLogsPage,
   currentLogs,
@@ -80,6 +82,19 @@ function renderLogCard(log, index, cardNum, total) {
   `;
 }
 
+// Render pagination into static container
+function renderPagination(total) {
+  const paginationEl = document.getElementById('logs-pagination');
+  const totalPages = Math.ceil(total / 10) || 1;
+  const currentPage = logsPage + 1;
+
+  paginationEl.innerHTML = `
+    <button class="pagination-btn" id="logs-prev" ${logsPage === 0 ? 'disabled' : ''}>Previous</button>
+    <span class="pagination-info">Page ${currentPage} of ${totalPages}</span>
+    <button class="pagination-btn" id="logs-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+  `;
+}
+
 // Render message logs as cards
 function renderLogsCards(logs, total) {
   setCurrentLogs(logs);
@@ -93,16 +108,9 @@ function renderLogsCards(logs, total) {
     `;
   }
 
-  const totalPages = Math.ceil(total / 50);
-  const currentPage = logsPage + 1;
-  const startNum = logsPage * 50 + 1;
+  const startNum = logsPage * 10 + 1;
 
   return `
-    <div class="pagination">
-      <button class="pagination-btn" id="logs-prev" ${logsPage === 0 ? 'disabled' : ''}>Previous</button>
-      <span class="pagination-info">Page ${currentPage} of ${totalPages}</span>
-      <button class="pagination-btn" id="logs-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next</button>
-    </div>
     <div class="logs-grid">
       ${logs.map((log, index) => renderLogCard(log, index, startNum + index, total)).join('')}
     </div>
@@ -239,11 +247,13 @@ export async function loadMessageLogs() {
       backend: logsBackend,
       model: logsModel,
       dlpAction: logsDlpAction,
+      search: logsSearch,
       page: logsPage
     });
+    renderPagination(result.total);
     content.innerHTML = renderLogsCards(result.logs, result.total);
     attachCardHandlers(content);
-    attachPaginationHandlers(content);
+    attachPaginationHandlers();
   } catch (error) {
     content.innerHTML = `
       <div class="empty-state">
@@ -255,9 +265,10 @@ export async function loadMessageLogs() {
 }
 
 // Attach pagination handlers
-function attachPaginationHandlers(container) {
-  const prevBtn = container.querySelector('#logs-prev');
-  const nextBtn = container.querySelector('#logs-next');
+function attachPaginationHandlers() {
+  const paginationEl = document.getElementById('logs-pagination');
+  const prevBtn = paginationEl.querySelector('#logs-prev');
+  const nextBtn = paginationEl.querySelector('#logs-next');
 
   if (prevBtn) {
     prevBtn.addEventListener('click', () => {
@@ -348,4 +359,26 @@ export function initLogsDlpFilter() {
     setLogsPage(0);
     loadMessageLogs();
   });
+}
+
+// Initialize logs search
+export function initLogsSearch() {
+  const input = document.getElementById('logs-search-input');
+  const searchBtn = document.getElementById('logs-search-btn');
+
+  const performSearch = () => {
+    setLogsSearch(input.value);
+    setLogsPage(0);
+    loadMessageLogs();
+  };
+
+  // Search on Enter key
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      performSearch();
+    }
+  });
+
+  // Search on button click
+  searchBtn.addEventListener('click', performSearch);
 }

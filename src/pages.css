@@ -302,15 +302,35 @@
   background: #fff;
 }
 
-/* ============ Logs Pagination ============ */
+/* ============ Logs Toolbar & Pagination ============ */
 
 #logs-tab .page-header {
   position: sticky;
   top: 0;
   z-index: 10;
   background: #f0f2f5;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
   margin-bottom: 0;
+}
+
+.logs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 52px;
+  z-index: 9;
+  background: #f0f2f5;
+  padding: 8px 0 16px 0;
+}
+
+.logs-toolbar .search-box {
+  flex: 0 0 auto;
+}
+
+.logs-toolbar .pagination {
+  margin-bottom: 0;
+  padding: 0;
 }
 
 .pagination {
@@ -318,12 +338,6 @@
   justify-content: center;
   align-items: center;
   gap: 16px;
-  padding: 12px 0;
-  position: sticky;
-  top: 52px;
-  z-index: 9;
-  background: #f0f2f5;
-  margin-bottom: 16px;
 }
 
 .pagination-btn {

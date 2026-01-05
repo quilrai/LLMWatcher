@@ -327,6 +327,7 @@ pub fn get_message_logs(
     backend: String,
     model: String,
     dlp_action: String,
+    search: String,
     page: i64,
 ) -> Result<PaginatedLogs, String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
@@ -355,7 +356,18 @@ pub fn get_message_logs(
         _ => String::new(),
     };
 
-    let filters = format!("{}{}{}", backend_filter, model_filter, dlp_filter);
+    // Search filter - case-insensitive LIKE on request_body and response_body
+    let search_filter = if search.trim().is_empty() {
+        String::new()
+    } else {
+        let escaped_search = search.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!(
+            " AND (LOWER(request_body) LIKE LOWER('%{}%') ESCAPE '\\' OR LOWER(response_body) LIKE LOWER('%{}%') ESCAPE '\\')",
+            escaped_search, escaped_search
+        )
+    };
+
+    let filters = format!("{}{}{}{}", backend_filter, model_filter, dlp_filter, search_filter);
 
     // Get total count
     let total: i64 = conn
