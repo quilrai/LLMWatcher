@@ -1,6 +1,9 @@
 // DLP (Data Loss Prevention) Redaction Logic
 
 use crate::dlp_pattern_config::get_db_path;
+use crate::pattern_utils::{
+    compile_pattern_set, count_unique_chars, is_match_excluded_by_context,
+};
 use regex::Regex;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
@@ -69,45 +72,31 @@ pub fn get_enabled_dlp_patterns() -> Vec<CompiledDlpPattern> {
     for (name, pattern_type, patterns_json, negative_pattern_type, negative_patterns_json, min_occurrences, min_unique_chars) in db_patterns {
         let pattern_list: Vec<String> = serde_json::from_str(&patterns_json).unwrap_or_default();
 
-        // Compile positive patterns
-        let mut regexes = Vec::new();
-        for p in pattern_list {
-            let regex_pattern = if pattern_type == "keyword" {
-                format!(r"(?i){}", regex::escape(&p))
-            } else {
-                p
-            };
+        // Parse negative patterns if present
+        let neg_pattern_list: Option<Vec<String>> = negative_patterns_json
+            .as_ref()
+            .and_then(|json| serde_json::from_str(json).ok());
 
-            if let Ok(re) = Regex::new(&regex_pattern) {
-                regexes.push(re);
+        // Compile patterns using shared utility
+        let compiled = match compile_pattern_set(
+            &pattern_list,
+            &pattern_type,
+            neg_pattern_list.as_ref(),
+            negative_pattern_type.as_deref(),
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[DLP] Error compiling pattern '{}': {}", name, e);
+                continue;
             }
-        }
+        };
 
-        // Compile negative patterns
-        let mut negative_regexes = Vec::new();
-        if let Some(neg_json) = negative_patterns_json {
-            let neg_pattern_list: Vec<String> = serde_json::from_str(&neg_json).unwrap_or_default();
-            let neg_type = negative_pattern_type.as_deref().unwrap_or("regex");
-
-            for p in neg_pattern_list {
-                let regex_pattern = if neg_type == "keyword" {
-                    format!(r"(?i){}", regex::escape(&p))
-                } else {
-                    p
-                };
-
-                if let Ok(re) = Regex::new(&regex_pattern) {
-                    negative_regexes.push(re);
-                }
-            }
-        }
-
-        if !regexes.is_empty() {
+        if !compiled.regexes.is_empty() {
             patterns.push(CompiledDlpPattern {
                 name,
                 pattern_type,
-                regexes,
-                negative_regexes,
+                regexes: compiled.regexes,
+                negative_regexes: compiled.negative_regexes,
                 min_occurrences,
                 min_unique_chars,
             });
@@ -117,22 +106,6 @@ pub fn get_enabled_dlp_patterns() -> Vec<CompiledDlpPattern> {
     patterns
 }
 
-/// Count unique characters in a string
-fn count_unique_chars(s: &str) -> usize {
-    s.chars().collect::<HashSet<_>>().len()
-}
-
-/// Check if text should be excluded by negative patterns
-/// Negative patterns take precedence: if ANY negative pattern matches the text,
-/// the entire pattern group is skipped (even if positive patterns match)
-fn is_excluded_by_negative(text: &str, negative_regexes: &[Regex]) -> bool {
-    for neg_re in negative_regexes {
-        if neg_re.is_match(text) {
-            return true;
-        }
-    }
-    false
-}
 
 /// Apply DLP redaction to request body (only user messages, not system)
 /// Supports both Claude (messages array) and Codex (input array) formats
@@ -326,36 +299,44 @@ fn redact_text(
     let mut result = text.to_string();
 
     for pattern in patterns {
-        // Check negative patterns first - they take precedence
-        // If ANY negative pattern matches the text, skip this pattern group entirely
-        if is_excluded_by_negative(&result, &pattern.negative_regexes) {
-            continue;
-        }
+        // Collect all matches with their positions, filtering by context-aware negative patterns
+        let mut valid_matches: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
 
-        // Collect all matches from all regexes for this pattern
-        let mut all_matches: Vec<String> = Vec::new();
         for regex in pattern.regexes.iter() {
-            let matches: Vec<String> = regex
-                .find_iter(&result)
-                .map(|m| m.as_str().to_string())
-                .collect();
-            all_matches.extend(matches);
+            for m in regex.find_iter(&result) {
+                let matched = m.as_str().to_string();
+
+                // Skip duplicates
+                if seen.contains(&matched) {
+                    continue;
+                }
+
+                // Check if this match should be excluded based on its context
+                // Context = 30 chars before + match + 30 chars after
+                if is_match_excluded_by_context(&result, m.start(), m.end(), &pattern.negative_regexes) {
+                    continue;
+                }
+
+                // Validate min_unique_chars
+                if pattern.min_unique_chars > 0 {
+                    let unique_count = count_unique_chars(&matched);
+                    if (unique_count as i32) < pattern.min_unique_chars {
+                        continue;
+                    }
+                }
+
+                seen.insert(matched.clone());
+                valid_matches.push(matched);
+            }
         }
 
         // Check min_occurrences threshold
-        if (all_matches.len() as i32) < pattern.min_occurrences {
+        if (valid_matches.len() as i32) < pattern.min_occurrences {
             continue;
         }
 
-        for matched in all_matches {
-            // Validate min_unique_chars
-            if pattern.min_unique_chars > 0 {
-                let unique_count = count_unique_chars(&matched);
-                if (unique_count as i32) < pattern.min_unique_chars {
-                    continue;
-                }
-            }
-
+        for matched in valid_matches {
             // Check if we already have a placeholder for this exact value
             let (placeholder, is_new) = replacements
                 .iter()
@@ -416,41 +397,42 @@ pub fn check_dlp_patterns(text: &str) -> Vec<DlpDetection> {
     let mut seen_values: HashSet<String> = HashSet::new();
 
     for pattern in patterns {
-        // Check negative patterns first - they take precedence
-        // If ANY negative pattern matches the text, skip this pattern group entirely
-        if is_excluded_by_negative(text, &pattern.negative_regexes) {
-            continue;
-        }
+        // Collect all matches, filtering by context-aware negative patterns
+        let mut valid_matches: Vec<String> = Vec::new();
 
-        // Collect all matches from all regexes for this pattern
-        let mut all_matches: Vec<String> = Vec::new();
         for regex in &pattern.regexes {
-            let matches: Vec<String> = regex
-                .find_iter(text)
-                .map(|m| m.as_str().to_string())
-                .collect();
-            all_matches.extend(matches);
+            for m in regex.find_iter(text) {
+                let matched = m.as_str().to_string();
+
+                // Skip duplicates (across all patterns)
+                if seen_values.contains(&matched) {
+                    continue;
+                }
+
+                // Check if this match should be excluded based on its context
+                // Context = 30 chars before + match + 30 chars after
+                if is_match_excluded_by_context(text, m.start(), m.end(), &pattern.negative_regexes) {
+                    continue;
+                }
+
+                // Validate min_unique_chars
+                if pattern.min_unique_chars > 0 {
+                    let unique_count = count_unique_chars(&matched);
+                    if (unique_count as i32) < pattern.min_unique_chars {
+                        continue;
+                    }
+                }
+
+                valid_matches.push(matched);
+            }
         }
 
         // Check min_occurrences threshold
-        if (all_matches.len() as i32) < pattern.min_occurrences {
+        if (valid_matches.len() as i32) < pattern.min_occurrences {
             continue;
         }
 
-        for matched in all_matches {
-            // Skip duplicates
-            if seen_values.contains(&matched) {
-                continue;
-            }
-
-            // Validate min_unique_chars
-            if pattern.min_unique_chars > 0 {
-                let unique_count = count_unique_chars(&matched);
-                if (unique_count as i32) < pattern.min_unique_chars {
-                    continue;
-                }
-            }
-
+        for matched in valid_matches {
             seen_values.insert(matched.clone());
 
             detections.push(DlpDetection {

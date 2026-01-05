@@ -440,19 +440,21 @@
                       <span>Regex</span>
                     </label>
                   </div>
+                  <p class="form-hint" id="pattern-type-hint">Keywords: case-insensitive literal match. Regex: raw regex patterns (case-sensitive).</p>
                 </div>
                 <div class="form-group form-group-half">
                   <label>Validation</label>
                   <div class="form-inline">
                     <div class="form-inline-item">
                       <label for="min-unique-chars" class="form-label-sm">Min Unique Chars</label>
-                      <input type="number" id="min-unique-chars" class="form-input form-input-sm" min="0" value="0" />
+                      <input type="number" id="min-unique-chars" class="form-input form-input-sm" min="0" value="0" title="Reject matches with fewer distinct characters (e.g., 'aaa' has 1 unique char)" />
                     </div>
                     <div class="form-inline-item">
                       <label for="min-occurrences" class="form-label-sm">Min Occurrences</label>
-                      <input type="number" id="min-occurrences" class="form-input form-input-sm" min="1" value="1" />
+                      <input type="number" id="min-occurrences" class="form-input form-input-sm" min="1" value="1" title="Require at least this many matches before flagging" />
                     </div>
                   </div>
+                  <p class="form-hint">Filters to reduce false positives.</p>
                 </div>
               </div>
 
@@ -464,7 +466,8 @@
               <details class="form-details">
                 <summary>Negative Patterns (Exclusions)</summary>
                 <div class="form-details-content">
-                  <p class="form-hint" style="margin-bottom: 12px;">Negative patterns take precedence: if any match is found, this pattern group is skipped entirely.</p>
+                  <p class="form-hint" style="margin-bottom: 12px;">Context-aware exclusion: each match is checked with 30 characters before and after. If a negative pattern appears within that context window, the specific match is excluded.</p>
+                  <p class="form-hint" style="margin-bottom: 12px;"><strong>Example:</strong> Pattern <code>sk-[a-z0-9]+</code> with negative <code>test</code> will catch <code>sk-prod456</code> but exclude <code>sk-test123</code> when "test" appears nearby.</p>
                   <div class="form-group">
                     <label>Negative Pattern Type</label>
                     <div class="radio-group">
@@ -483,8 +486,8 @@
                     </div>
                   </div>
                   <div class="form-group">
-                    <label for="negative-pattern-values">Negative Patterns <span class="form-hint">(matches excluded)</span></label>
-                    <textarea id="negative-pattern-values" class="form-textarea" rows="3" placeholder="Enter patterns to exclude from detection"></textarea>
+                    <label for="negative-pattern-values">Negative Patterns <span class="form-hint">(one per line)</span></label>
+                    <textarea id="negative-pattern-values" class="form-textarea" rows="3" placeholder="e.g., test, example, dummy"></textarea>
                   </div>
                 </div>
               </details>

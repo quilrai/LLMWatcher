@@ -10,6 +10,7 @@ mod cursor_hooks;
 mod database;
 mod dlp;
 mod dlp_pattern_config;
+mod pattern_utils;
 mod proxy;
 mod requestresponsemetadata;
 

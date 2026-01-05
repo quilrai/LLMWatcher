@@ -2,10 +2,11 @@
 
 use crate::database::{get_dlp_action_from_db, save_dlp_action_to_db};
 use crate::dlp_pattern_config::get_db_path;
-use regex::Regex;
+use crate::pattern_utils::{
+    collect_matches_with_negative_context, compile_pattern_set, filter_by_min_occurrences,
+};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DlpPattern {
@@ -420,78 +421,31 @@ pub fn test_dlp_pattern(
     min_unique_chars: i32,
     test_text: String,
 ) -> Result<TestPatternResult, String> {
-    // Compile positive patterns
-    let mut regexes: Vec<Regex> = Vec::new();
-    for p in &patterns {
-        let regex_pattern = if pattern_type == "keyword" {
-            format!(r"(?i){}", regex::escape(p))
-        } else {
-            p.clone()
-        };
-        match Regex::new(&regex_pattern) {
-            Ok(re) => regexes.push(re),
-            Err(e) => return Err(format!("Invalid pattern '{}': {}", p, e)),
-        }
-    }
+    // Compile patterns using shared utility
+    let compiled = compile_pattern_set(
+        &patterns,
+        &pattern_type,
+        negative_patterns.as_ref(),
+        negative_pattern_type.as_deref(),
+    )?;
 
-    // Compile negative patterns
-    let mut negative_regexes: Vec<Regex> = Vec::new();
-    if let Some(ref neg_patterns) = negative_patterns {
-        let neg_type = negative_pattern_type.as_deref().unwrap_or("regex");
-        for p in neg_patterns {
-            if p.trim().is_empty() {
-                continue;
-            }
-            let regex_pattern = if neg_type == "keyword" {
-                format!(r"(?i){}", regex::escape(p))
-            } else {
-                p.clone()
-            };
-            match Regex::new(&regex_pattern) {
-                Ok(re) => negative_regexes.push(re),
-                Err(e) => return Err(format!("Invalid negative pattern '{}': {}", p, e)),
-            }
-        }
-    }
+    // Collect matches with context-aware negative pattern filtering
+    // Each match is checked against negative patterns within its 30-char context window
+    let match_result = collect_matches_with_negative_context(
+        &test_text,
+        &compiled.regexes,
+        &compiled.negative_regexes,
+        min_unique_chars,
+    );
 
-    // Check negative patterns first - they take precedence
-    for neg_re in &negative_regexes {
-        if neg_re.is_match(&test_text) {
-            return Ok(TestPatternResult {
-                matches: Vec::new(),
-                excluded: true,
-            });
-        }
-    }
+    // Filter by min_occurrences threshold
+    let matches = filter_by_min_occurrences(match_result, min_occurrences);
 
-    // Collect all matches
-    let mut all_matches: Vec<String> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    for regex in &regexes {
-        for m in regex.find_iter(&test_text) {
-            let matched = m.as_str().to_string();
-            if !seen.contains(&matched) {
-                // Check min_unique_chars
-                if min_unique_chars > 0 {
-                    let unique_count = matched.chars().collect::<HashSet<_>>().len();
-                    if (unique_count as i32) < min_unique_chars {
-                        continue;
-                    }
-                }
-                seen.insert(matched.clone());
-                all_matches.push(matched);
-            }
-        }
-    }
-
-    // Check min_occurrences (count total matches, not unique)
-    let total_count: usize = regexes.iter().map(|r| r.find_iter(&test_text).count()).sum();
-    if (total_count as i32) < min_occurrences {
-        all_matches.clear();
-    }
+    // If all matches were excluded by negative patterns, indicate exclusion
+    let excluded = matches.is_empty() && !compiled.negative_regexes.is_empty();
 
     Ok(TestPatternResult {
-        matches: all_matches,
-        excluded: false,
+        matches,
+        excluded,
     })
 }
