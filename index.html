@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Agent Gateway - Quilr</title>
+  <meta name="description" content="Monitor and control LLM requests from your coding agents. Local, private, and fully customizable.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <span class="logo">Local Agent Gateway</span>
+      <div class="nav-links">
+        <a href="#usage">Usage Guide</a>
+        <a href="https://github.com/anthropics/local-agent-gateway" class="github-link">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-content">
+        <h1>Local Agent Gateway</h1>
+        <p class="tagline">Monitor and control LLM requests from your coding agents</p>
+        <p class="subtitle">Open source, fully local proxy for Claude Code, Codex, Cursor, and more.</p>
+        <ul class="hero-features">
+          <li>100% local - your code never leaves your machine</li>
+          <li>Block or redact sensitive data with custom patterns</li>
+          <li>Rate limiting to control costs</li>
+          <li>Full searchable request/response logs</li>
+        </ul>
+        <div class="cta-buttons">
+          <a href="#download" class="btn btn-primary">Download for macOS</a>
+          <a href="#download" class="btn btn-secondary">Windows</a>
+          <a href="#download" class="btn btn-secondary">Linux</a>
+        </div>
+        <div class="github-buttons">
+          <a href="https://github.com/anthropics/local-agent-gateway" class="github-btn" target="_blank">
+            <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+            View on GitHub
+          </a>
+          <a href="https://github.com/anthropics/local-agent-gateway/stargazers" class="github-btn star-btn" target="_blank">
+            <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"></path></svg>
+            Star
+          </a>
+          <a href="https://github.com/anthropics" class="github-btn" target="_blank">
+            <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor"><path d="M2 5.5a3.5 3.5 0 115.898 2.549 5.507 5.507 0 013.034 4.084.75.75 0 11-1.482.235 4.001 4.001 0 00-7.9 0 .75.75 0 01-1.482-.236A5.507 5.507 0 013.102 8.05 3.49 3.49 0 012 5.5zM11 4a.75.75 0 100 1.5 1.5 1.5 0 01.666 2.844.75.75 0 00-.416.672v.352a.75.75 0 00.574.73c1.2.289 2.162 1.2 2.522 2.372a.75.75 0 101.434-.44 5.01 5.01 0 00-2.56-3.012A3 3 0 0011 4z"></path><path d="M5.5 5.5a2 2 0 104 0 2 2 0 00-4 0z"></path></svg>
+            Follow @anthropics
+          </a>
+        </div>
+      </div>
+      <div class="hero-image">
+        <img src="images/main%20dashboard.png" alt="Local Agent Gateway Dashboard" decoding="async">
+      </div>
+    </section>
+
+    <!-- Usage Guide -->
+    <section id="usage" class="usage">
+      <h2>Usage Guide</h2>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="agents">Claude Code / Codex / Cursor</button>
+        <button class="tab-btn" data-tab="patterns">Custom Patterns</button>
+        <button class="tab-btn" data-tab="limits">Rate Limits</button>
+        <button class="tab-btn" data-tab="gateway">Custom LLM Gateway</button>
+      </div>
+
+      <div class="tab-content">
+        <!-- Agents Tab -->
+        <div class="tab-pane active" id="agents">
+          <div class="guide-content">
+            <h3>Getting Started</h3>
+            <ol>
+              <li>Download and launch the Agent Gateway app</li>
+              <li>Click on <strong>"How to Use"</strong></li>
+              <li>Select your coding agent (Claude Code, Codex, or Cursor)</li>
+              <li>Click <strong>Install</strong> for automated setup, or follow the instructions for manual setup</li>
+            </ol>
+
+            <p>Once setup is complete, the dashboard and message logs will be populated as you start sending messages.</p>
+
+            <div class="screenshot">
+              <img src="images/setup%20with%20your%20coding%20agent.png" alt="Setup with your coding agent" loading="lazy" decoding="async">
+            </div>
+
+            <div class="screenshot">
+              <img src="images/request%20response%20logs.png" alt="Request and response logs" loading="lazy" decoding="async">
+            </div>
+          </div>
+        </div>
+
+        <!-- Patterns Tab -->
+        <div class="tab-pane" id="patterns">
+          <div class="guide-content">
+            <h3>Adding Custom Detection Patterns</h3>
+            <p>The gateway includes pre-defined patterns for common sensitive data (API keys, credentials, etc.). You can add your own:</p>
+            <ol>
+              <li>Open the <strong>Detections</strong> tab in the app</li>
+              <li>Click <strong>Add Pattern</strong></li>
+              <li>Choose pattern type:
+                <ul>
+                  <li><strong>Block</strong> - Reject requests containing this pattern</li>
+                  <li><strong>Redact</strong> - Replace matched content before forwarding</li>
+                </ul>
+              </li>
+              <li>Enter your regex pattern or simple text match</li>
+              <li>Test the pattern against sample input</li>
+              <li>Save and enable the pattern</li>
+            </ol>
+
+            <div class="screenshot">
+              <img src="images/custom%20pattern.png" alt="Custom patterns configuration" loading="lazy" decoding="async">
+            </div>
+          </div>
+        </div>
+
+        <!-- Rate Limits Tab -->
+        <div class="tab-pane" id="limits">
+          <div class="guide-content">
+            <h3>Setting Rate Limits</h3>
+            <p>Prevent runaway requests and control costs with rate limiting:</p>
+            <ol>
+              <li>Open the <strong>Settings</strong> tab</li>
+              <li>Navigate to <strong>Rate Limiting</strong></li>
+              <li>Configure limits:
+                <ul>
+                  <li><strong>Token warning threshold</strong> - Get notified when requests exceed this</li>
+                  <li><strong>Token hard limit</strong> - Block requests above this count</li>
+                  <li><strong>Requests per minute</strong> - Throttle request frequency</li>
+                </ul>
+              </li>
+              <li>Choose action: <strong>Warn</strong> or <strong>Block</strong></li>
+              <li>Save settings</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Custom Gateway Tab -->
+        <div class="tab-pane" id="gateway">
+          <div class="guide-content">
+            <h3>Custom LLM Gateway</h3>
+            <p>Use your own API tokens with any OpenAI-compatible endpoint:</p>
+            <ol>
+              <li>Open the <strong>Settings</strong> tab</li>
+              <li>Navigate to <strong>Custom Endpoints</strong></li>
+              <li>Click <strong>Add Endpoint</strong></li>
+              <li>Configure:
+                <ul>
+                  <li><strong>Endpoint URL</strong> - Your LLM provider's API URL</li>
+                  <li><strong>API Key</strong> - Your token (stored locally)</li>
+                  <li><strong>Model mapping</strong> - Optional model name overrides</li>
+                </ul>
+              </li>
+              <li>Enable monitoring for this endpoint</li>
+              <li>All requests to this endpoint will now flow through the gateway</li>
+            </ol>
+
+            <div class="screenshot">
+              <img src="images/llm%20gateway.png" alt="Custom LLM gateway configuration" loading="lazy" decoding="async">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-content">
+      <p>Local Agent Gateway by <a href="https://quilr.ai">Quilr.ai</a></p>
+      <div class="footer-links">
+        <a href="https://github.com/anthropics/local-agent-gateway">GitHub</a>
+        <a href="https://github.com/anthropics/local-agent-gateway/issues">Report Issue</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Remove active from all tabs and panes
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+        // Add active to clicked tab and corresponding pane
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
