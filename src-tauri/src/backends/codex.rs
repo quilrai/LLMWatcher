@@ -5,7 +5,8 @@ use serde_json::json;
 
 use crate::backends::custom::CustomBackendSettings;
 use crate::backends::Backend;
-use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata};
+use crate::requestresponsemetadata::{RequestMetadata, ResponseMetadata, ToolCall};
+use std::collections::HashMap;
 
 pub const CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 
@@ -85,41 +86,101 @@ impl Backend for CodexBackend {
             // Check for reasoning in the streamed response
             meta.has_thinking = body.contains("\"type\":\"reasoning\"");
 
-            // Parse SSE stream to find response.completed event with usage data
+            // Track function calls by item_id: (call_id, name, accumulated_arguments)
+            let mut function_calls_map: HashMap<String, (String, String, String)> = HashMap::new();
+
+            // Parse SSE stream
             for line in body.lines() {
-                if line.starts_with("data: ") && line.contains("response.completed") {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line[6..]) {
-                        // Extract from response.completed event
-                        // Structure: {"type":"response.completed","response":{"status":"completed","usage":{...}}}
-                        if let Some(response) = json.get("response") {
-                            // Get status as stop_reason
-                            if let Some(status) = response.get("status").and_then(|v| v.as_str()) {
-                                meta.stop_reason = Some(status.to_string());
-                            }
+                if !line.starts_with("data: ") {
+                    continue;
+                }
+                let json_str = &line[6..];
 
-                            // Get usage data
-                            if let Some(usage) = response.get("usage") {
-                                meta.input_tokens = usage
-                                    .get("input_tokens")
-                                    .and_then(|v| v.as_i64())
-                                    .unwrap_or(0) as i32;
-                                meta.output_tokens = usage
-                                    .get("output_tokens")
-                                    .and_then(|v| v.as_i64())
-                                    .unwrap_or(0) as i32;
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
-                                // Codex uses input_tokens_details.cached_tokens
-                                if let Some(details) = usage.get("input_tokens_details") {
-                                    meta.cache_read_tokens = details
-                                        .get("cached_tokens")
-                                        .and_then(|v| v.as_i64())
-                                        .unwrap_or(0) as i32;
+                    match event_type {
+                        "response.output_item.added" => {
+                            // Check if this is a function_call item
+                            if let Some(item) = json.get("item") {
+                                if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                                    // item_id is used to match delta events, call_id is the external ID we store
+                                    let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    println!("[CODEX] output_item.added: item_id={}, call_id={}, name={}", item_id, call_id, name);
+                                    function_calls_map.insert(item_id, (call_id, name, String::new()));
                                 }
                             }
                         }
+                        "response.function_call_arguments.delta" => {
+                            // Delta events use item_id to identify which function call
+                            if let Some(item_id) = json.get("item_id").and_then(|v| v.as_str()) {
+                                if let Some(delta) = json.get("delta").and_then(|v| v.as_str()) {
+                                    if let Some(entry) = function_calls_map.get_mut(item_id) {
+                                        entry.2.push_str(delta);
+                                    }
+                                }
+                            }
+                        }
+                        "response.completed" => {
+                            // Extract final usage and status
+                            if let Some(response) = json.get("response") {
+                                if let Some(status) = response.get("status").and_then(|v| v.as_str()) {
+                                    meta.stop_reason = Some(status.to_string());
+                                }
+
+                                if let Some(usage) = response.get("usage") {
+                                    meta.input_tokens = usage
+                                        .get("input_tokens")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0) as i32;
+                                    meta.output_tokens = usage
+                                        .get("output_tokens")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0) as i32;
+
+                                    if let Some(details) = usage.get("input_tokens_details") {
+                                        meta.cache_read_tokens = details
+                                            .get("cached_tokens")
+                                            .and_then(|v| v.as_i64())
+                                            .unwrap_or(0) as i32;
+                                    }
+                                }
+
+                                // Also extract function calls from the completed response output
+                                if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+                                    for item in output {
+                                        if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                                            let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let arguments = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            // Only add if not already tracked via streaming
+                                            if !function_calls_map.contains_key(&item_id) {
+                                                function_calls_map.insert(item_id, (call_id, name, arguments));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
+
+            // Convert accumulated function calls to ToolCall structs
+            println!("[CODEX] Final function_calls_map: {:?}", function_calls_map);
+            meta.tool_calls = function_calls_map
+                .into_iter()
+                .map(|(_item_id, (call_id, name, arguments))| {
+                    let input = serde_json::from_str(&arguments).unwrap_or(serde_json::Value::Null);
+                    println!("[CODEX] ToolCall: id={}, name={}, args_len={}, input={}", call_id, name, arguments.len(), input);
+                    ToolCall { id: call_id, name, input }
+                })
+                .collect();
+
         } else {
             // Non-streaming response (full JSON object)
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
@@ -128,6 +189,17 @@ impl Backend for CodexBackend {
                     meta.has_thinking = output
                         .iter()
                         .any(|item| item.get("type").and_then(|t| t.as_str()) == Some("reasoning"));
+
+                    // Extract function calls from output
+                    for item in output {
+                        if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let arguments = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("");
+                            let input = serde_json::from_str(arguments).unwrap_or(serde_json::Value::Null);
+                            meta.tool_calls.push(ToolCall { id: call_id, name, input });
+                        }
+                    }
                 }
 
                 // Get status as stop_reason

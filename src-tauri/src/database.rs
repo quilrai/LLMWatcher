@@ -259,9 +259,9 @@ impl Database {
 
         println!("[DB] Backfilling tool_calls from existing requests...");
 
-        // Get all Claude requests that might have tool calls
+        // Get all Claude and Codex requests that might have tool calls
         let mut stmt = match conn.prepare(
-            "SELECT id, response_body, is_streaming FROM requests WHERE backend = 'claude' AND response_body IS NOT NULL"
+            "SELECT id, backend, response_body, is_streaming FROM requests WHERE backend IN ('claude', 'codex') AND response_body IS NOT NULL"
         ) {
             Ok(s) => s,
             Err(e) => {
@@ -270,11 +270,12 @@ impl Database {
             }
         };
 
-        let rows: Vec<(i64, String, bool)> = match stmt.query_map([], |row| {
+        let rows: Vec<(i64, String, String, bool)> = match stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1).unwrap_or_default(),
-                row.get::<_, i32>(2).unwrap_or(0) == 1,
+                row.get::<_, String>(2).unwrap_or_default(),
+                row.get::<_, i32>(3).unwrap_or(0) == 1,
             ))
         }) {
             Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
@@ -285,8 +286,12 @@ impl Database {
         };
 
         let mut total_tool_calls = 0;
-        for (request_id, response_body, is_streaming) in rows {
-            let tool_calls = Self::extract_tool_calls_from_response(&response_body, is_streaming);
+        for (request_id, backend, response_body, is_streaming) in rows {
+            let tool_calls = match backend.as_str() {
+                "claude" => Self::extract_tool_calls_claude(&response_body, is_streaming),
+                "codex" => Self::extract_tool_calls_codex(&response_body, is_streaming),
+                _ => Vec::new(),
+            };
             for tc in &tool_calls {
                 let input_json = serde_json::to_string(&tc.input).unwrap_or_default();
                 if conn.execute(
@@ -307,8 +312,8 @@ impl Database {
         println!("[DB] Backfill complete. Extracted {} tool calls.", total_tool_calls);
     }
 
-    /// Extract tool calls from a response body (used for backfill)
-    fn extract_tool_calls_from_response(body: &str, is_streaming: bool) -> Vec<crate::requestresponsemetadata::ToolCall> {
+    /// Extract tool calls from Claude response body (used for backfill)
+    fn extract_tool_calls_claude(body: &str, is_streaming: bool) -> Vec<crate::requestresponsemetadata::ToolCall> {
         use std::collections::HashMap;
         use crate::requestresponsemetadata::ToolCall;
 
@@ -372,6 +377,96 @@ impl Database {
                             let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let input = block.get("input").cloned().unwrap_or(serde_json::Value::Null);
                             tool_calls.push(ToolCall { id, name, input });
+                        }
+                    }
+                }
+            }
+        }
+
+        tool_calls
+    }
+
+    /// Extract tool calls from Codex response body (used for backfill)
+    fn extract_tool_calls_codex(body: &str, is_streaming: bool) -> Vec<crate::requestresponsemetadata::ToolCall> {
+        use std::collections::HashMap;
+        use crate::requestresponsemetadata::ToolCall;
+
+        let mut tool_calls = Vec::new();
+
+        if is_streaming {
+            // Track by item_id: (call_id, name, accumulated_arguments)
+            let mut function_calls_map: HashMap<String, (String, String, String)> = HashMap::new();
+
+            for line in body.lines() {
+                if !line.starts_with("data: ") {
+                    continue;
+                }
+                let json_str = &line[6..];
+
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                    match event_type {
+                        "response.output_item.added" => {
+                            if let Some(item) = json.get("item") {
+                                if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                                    let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    function_calls_map.insert(item_id, (call_id, name, String::new()));
+                                }
+                            }
+                        }
+                        "response.function_call_arguments.delta" => {
+                            // Delta events use item_id to identify which function call
+                            if let Some(item_id) = json.get("item_id").and_then(|v| v.as_str()) {
+                                if let Some(delta) = json.get("delta").and_then(|v| v.as_str()) {
+                                    if let Some(entry) = function_calls_map.get_mut(item_id) {
+                                        entry.2.push_str(delta);
+                                    }
+                                }
+                            }
+                        }
+                        "response.completed" => {
+                            // Also extract from completed response output
+                            if let Some(response) = json.get("response") {
+                                if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+                                    for item in output {
+                                        if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                                            let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let arguments = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            if !function_calls_map.contains_key(&item_id) {
+                                                function_calls_map.insert(item_id, (call_id, name, arguments));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            tool_calls = function_calls_map
+                .into_iter()
+                .map(|(_item_id, (call_id, name, arguments))| {
+                    let input = serde_json::from_str(&arguments).unwrap_or(serde_json::Value::Null);
+                    ToolCall { id: call_id, name, input }
+                })
+                .collect();
+        } else {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+                if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
+                    for item in output {
+                        if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let arguments = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("");
+                            let input = serde_json::from_str(arguments).unwrap_or(serde_json::Value::Null);
+                            tool_calls.push(ToolCall { id: call_id, name, input });
                         }
                     }
                 }
@@ -536,6 +631,12 @@ impl Database {
             rusqlite::params![cutoff_ts],
         )?;
 
+        // Delete tool calls for requests that will be deleted
+        conn.execute(
+            "DELETE FROM tool_calls WHERE request_id IN (SELECT id FROM requests WHERE timestamp < ?1)",
+            rusqlite::params![cutoff_ts],
+        )?;
+
         // Delete old requests
         conn.execute(
             "DELETE FROM requests WHERE timestamp < ?1",
@@ -647,7 +748,16 @@ impl Database {
             ],
         )?;
 
-        Ok(conn.last_insert_rowid())
+        // With zstd compression enabled, 'requests' is a view and last_insert_rowid()
+        // returns 0 because the actual insert happens via an INSTEAD OF trigger.
+        // Query the actual ID from the underlying table.
+        let request_id: i64 = conn.query_row(
+            "SELECT MAX(id) FROM _requests_zstd",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok(request_id)
     }
 
     pub fn log_dlp_detections(
@@ -791,7 +901,16 @@ impl Database {
             ],
         )?;
 
-        Ok(conn.last_insert_rowid())
+        // With zstd compression enabled, 'requests' is a view and last_insert_rowid()
+        // returns 0 because the actual insert happens via an INSTEAD OF trigger.
+        // Query the actual ID from the underlying table.
+        let request_id: i64 = conn.query_row(
+            "SELECT MAX(id) FROM _requests_zstd",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok(request_id)
     }
 
     /// Update cursor hook output tokens, response body, and latency by generation_id

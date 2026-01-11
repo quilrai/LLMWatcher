@@ -272,7 +272,7 @@ pub struct PatternCount {
 }
 
 #[tauri::command]
-pub fn get_dlp_detection_stats(time_range: String) -> Result<DlpStats, String> {
+pub fn get_dlp_detection_stats(time_range: String, backend: String) -> Result<DlpStats, String> {
     let conn = open_connection().map_err(|e| e.to_string())?;
 
     // Ensure table exists
@@ -301,21 +301,35 @@ pub fn get_dlp_detection_stats(time_range: String) -> Result<DlpStats, String> {
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
     let cutoff_ts = cutoff.to_rfc3339();
 
-    // Get total detections count
+    // Build backend filter
+    let backend_filter = if backend == "all" {
+        String::new()
+    } else {
+        format!(" AND r.backend = '{}'", backend)
+    };
+
+    // Get total detections count (with backend filter)
     let total_detections: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM dlp_detections WHERE timestamp >= ?1",
+            &format!(
+                "SELECT COUNT(*) FROM dlp_detections d
+                 JOIN requests r ON d.request_id = r.id
+                 WHERE d.timestamp >= ?1{}",
+                backend_filter
+            ),
             [&cutoff_ts],
             |row| row.get(0),
         )
         .unwrap_or(0);
 
-    // Get detections by pattern
+    // Get detections by pattern (with backend filter)
     let mut stmt = conn
-        .prepare(
-            "SELECT pattern_name, COUNT(*) as count FROM dlp_detections
-             WHERE timestamp >= ?1 GROUP BY pattern_name ORDER BY count DESC",
-        )
+        .prepare(&format!(
+            "SELECT d.pattern_name, COUNT(*) as count FROM dlp_detections d
+             JOIN requests r ON d.request_id = r.id
+             WHERE d.timestamp >= ?1{} GROUP BY d.pattern_name ORDER BY count DESC",
+            backend_filter
+        ))
         .map_err(|e| e.to_string())?;
 
     let detections_by_pattern: Vec<PatternCount> = stmt
@@ -329,12 +343,15 @@ pub fn get_dlp_detection_stats(time_range: String) -> Result<DlpStats, String> {
         .filter_map(|r| r.ok())
         .collect();
 
-    // Get recent detections
+    // Get recent detections (with backend filter)
     let mut stmt = conn
-        .prepare(
-            "SELECT id, request_id, timestamp, pattern_name, pattern_type, original_value, placeholder, message_index
-             FROM dlp_detections WHERE timestamp >= ?1 ORDER BY id DESC LIMIT 50",
-        )
+        .prepare(&format!(
+            "SELECT d.id, d.request_id, d.timestamp, d.pattern_name, d.pattern_type, d.original_value, d.placeholder, d.message_index
+             FROM dlp_detections d
+             JOIN requests r ON d.request_id = r.id
+             WHERE d.timestamp >= ?1{} ORDER BY d.id DESC LIMIT 50",
+            backend_filter
+        ))
         .map_err(|e| e.to_string())?;
 
     let recent_detections: Vec<DlpDetectionRecord> = stmt

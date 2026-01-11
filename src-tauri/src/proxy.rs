@@ -523,7 +523,11 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
                     }
                     // Log tool calls if any
                     if !resp_meta.tool_calls.is_empty() {
-                        let _ = db_clone.log_tool_calls(request_id, &resp_meta.tool_calls);
+                        println!("[PROXY] Logging {} tool calls for request_id={}", resp_meta.tool_calls.len(), request_id);
+                        match db_clone.log_tool_calls(request_id, &resp_meta.tool_calls) {
+                            Ok(_) => println!("[PROXY] Tool calls logged successfully"),
+                            Err(e) => println!("[PROXY] Failed to log tool calls: {}", e),
+                        }
                     }
                 }
             }

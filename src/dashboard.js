@@ -149,7 +149,7 @@ export async function loadDashboard() {
     // Load dashboard stats, DLP stats, and tool insights in parallel
     const [data, dlpStats, toolInsights] = await Promise.all([
       invoke('get_dashboard_stats', { timeRange: currentTimeRange, backend: currentBackend }),
-      invoke('get_dlp_detection_stats', { timeRange: currentTimeRange }),
+      invoke('get_dlp_detection_stats', { timeRange: currentTimeRange, backend: currentBackend }),
       invoke('get_tool_call_insights', { timeRange: currentTimeRange, backend: currentBackend })
     ]);
 

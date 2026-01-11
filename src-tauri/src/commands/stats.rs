@@ -934,15 +934,41 @@ pub fn get_tool_call_insights(time_range: String, backend: String) -> Result<Too
         format!(" AND r.backend = '{}'", backend.replace('\'', "''"))
     };
 
+    println!("[STATS] get_tool_call_insights: time_range={}, backend={}, cutoff_ts={}", time_range, backend, cutoff_ts);
+
+    // Debug: check tool_calls table
+    let tc_count: i64 = conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |row| row.get(0)).unwrap_or(0);
+    println!("[STATS] Total tool_calls in DB: {}", tc_count);
+
+    // Debug: check recent requests with tool calls
+    if let Ok(mut debug_stmt) = conn.prepare(
+        "SELECT r.id, r.timestamp, r.backend, tc.tool_name
+         FROM tool_calls tc
+         JOIN requests r ON tc.request_id = r.id
+         ORDER BY r.id DESC LIMIT 5"
+    ) {
+        let debug_rows: Vec<(i64, String, String, String)> = debug_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        for (id, ts, backend, tool) in debug_rows {
+            println!("[STATS] Recent tool call: request_id={}, timestamp={}, backend={}, tool={}", id, ts, backend, tool);
+        }
+    }
+
     // Get raw tool calls
+    let query = format!(
+        "SELECT tc.tool_name, tc.tool_input
+         FROM tool_calls tc
+         JOIN requests r ON tc.request_id = r.id
+         WHERE r.timestamp >= ?1{}",
+        backend_filter
+    );
+    println!("[STATS] Query: {}", query);
+
     let mut calls_stmt = conn
-        .prepare(&format!(
-            "SELECT tc.tool_name, tc.tool_input
-             FROM tool_calls tc
-             JOIN requests r ON tc.request_id = r.id
-             WHERE r.timestamp >= ?1{}",
-            backend_filter
-        ))
+        .prepare(&query)
         .map_err(|e| e.to_string())?;
 
     let calls: Vec<(String, String)> = calls_stmt
@@ -952,6 +978,8 @@ pub fn get_tool_call_insights(time_range: String, backend: String) -> Result<Too
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
+
+    println!("[STATS] Found {} tool calls", calls.len());
 
     // Count tools and targets
     use std::collections::HashMap;
