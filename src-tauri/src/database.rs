@@ -839,6 +839,8 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let timestamp = chrono::Utc::now().to_rfc3339();
 
+        println!("[DB] log_cursor_hook_request - generation_id: {}, endpoint: {}", generation_id, endpoint_name);
+
         // Check if entry already exists for this generation_id (within last 5 minutes for faster lookup)
         let cutoff = (chrono::Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
         let existing_id: Option<i64> = conn
@@ -850,6 +852,7 @@ impl Database {
             .ok();
 
         if let Some(id) = existing_id {
+            println!("[DB] log_cursor_hook_request - found existing entry id: {}, updating", id);
             // Update existing entry - only upgrade dlp_action (blocked > redacted > passed)
             conn.execute(
                 "UPDATE requests SET
@@ -862,6 +865,7 @@ impl Database {
             return Ok(id);
         }
 
+        println!("[DB] log_cursor_hook_request - creating new entry");
         // Create new entry
         conn.execute(
             "INSERT INTO requests (
@@ -973,13 +977,42 @@ impl Database {
 
         // Find and update the request (within last 5 minutes for faster lookup)
         let cutoff = (chrono::Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+
+        // Debug: Check what entries exist and their extra_metadata values
+        println!("[DB] add_cursor_hook_thinking_tokens - looking for generation_id: {}", generation_id);
+
+        // Query from the underlying table to see what's actually stored
+        let debug_result: Result<(i64, Option<String>), _> = conn.query_row(
+            "SELECT id, extra_metadata FROM _requests_zstd WHERE timestamp >= ?1 AND backend = 'cursor-hooks' ORDER BY id DESC LIMIT 1",
+            rusqlite::params![cutoff],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+
+        match debug_result {
+            Ok((id, extra_meta)) => {
+                println!("[DB] Found entry id: {}, extra_metadata: {:?}", id, extra_meta);
+                if let Some(meta) = &extra_meta {
+                    // Try to parse and extract generation_id
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(meta) {
+                        println!("[DB] Parsed JSON, generation_id in db: {:?}", json.get("generation_id"));
+                    }
+                }
+            }
+            Err(e) => {
+                println!("[DB] No entries found or error: {}", e);
+            }
+        }
+
+        // Use the underlying table for the update
         let rows_affected = conn.execute(
-            "UPDATE requests SET
+            "UPDATE _requests_zstd SET
                 output_tokens = output_tokens + ?1,
                 has_thinking = 1
              WHERE timestamp >= ?2 AND backend = 'cursor-hooks' AND json_extract(extra_metadata, '$.generation_id') = ?3",
             rusqlite::params![thinking_word_count, cutoff, generation_id],
         )?;
+
+        println!("[DB] add_cursor_hook_thinking_tokens - rows_affected: {}", rows_affected);
 
         Ok(rows_affected > 0)
     }

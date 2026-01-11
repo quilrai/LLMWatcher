@@ -2,7 +2,8 @@
 //
 // Implements endpoints for Cursor IDE hooks to enable DLP blocking.
 // Hooks: beforeSubmitPrompt, beforeReadFile, beforeTabFileRead,
-//        afterAgentResponse, afterAgentThought
+//        beforeShellExecution, beforeMCPExecution,
+//        afterAgentResponse, afterAgentThought, afterTabFileEdit
 
 use crate::backends::custom::CustomBackendSettings;
 use crate::database::{Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_RATELIMITED};
@@ -165,6 +166,40 @@ pub struct AfterAgentThoughtInput {
     pub duration_ms: Option<i64>,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BeforeShellExecutionInput {
+    // Common fields
+    pub conversation_id: String,
+    pub generation_id: String,
+    pub model: String,
+    pub hook_event_name: String,
+    pub cursor_version: String,
+    pub workspace_roots: Vec<String>,
+    pub user_email: Option<String>,
+    // Hook-specific
+    pub command: String,
+    pub cwd: Option<String>,
+    pub sandbox: Option<bool>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BeforeMCPExecutionInput {
+    // Common fields
+    pub conversation_id: String,
+    pub generation_id: String,
+    pub model: String,
+    pub hook_event_name: String,
+    pub cursor_version: String,
+    pub workspace_roots: Vec<String>,
+    pub user_email: Option<String>,
+    // Hook-specific
+    pub server_name: String,
+    pub tool_name: String,
+    pub arguments: Option<serde_json::Value>,
+}
+
 // ============================================================================
 // Response Structures
 // ============================================================================
@@ -189,6 +224,24 @@ pub struct BeforeReadFileResponse {
 #[derive(Debug, Serialize)]
 pub struct BeforeTabFileReadResponse {
     pub permission: String, // "allow" or "deny"
+}
+
+#[derive(Debug, Serialize)]
+pub struct BeforeShellExecutionResponse {
+    pub permission: String, // "allow" or "deny"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BeforeMCPExecutionResponse {
+    pub permission: String, // "allow" or "deny"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -473,7 +526,7 @@ async fn before_submit_prompt_handler(
 
     // Log to database
     let dlp_action = if is_blocked { DLP_ACTION_BLOCKED } else { DLP_ACTION_PASSED };
-    if let Ok(request_id) = state.db.log_cursor_hook_request(
+    match state.db.log_cursor_hook_request(
         &input.generation_id,
         "CursorChat",
         &input.model,
@@ -487,9 +540,15 @@ async fn before_submit_prompt_handler(
         None, // response_headers (not applicable for cursor hooks)
         dlp_action,
     ) {
-        // Log DLP detections if any
-        if !all_detections.is_empty() {
-            let _ = state.db.log_dlp_detections(request_id, &all_detections);
+        Ok(request_id) => {
+            println!("[CURSOR_HOOK] before_submit_prompt - logged request_id: {}", request_id);
+            // Log DLP detections if any
+            if !all_detections.is_empty() {
+                let _ = state.db.log_dlp_detections(request_id, &all_detections);
+            }
+        }
+        Err(e) => {
+            println!("[CURSOR_HOOK] before_submit_prompt - FAILED to log: {}", e);
         }
     }
 
@@ -913,6 +972,225 @@ async fn after_tab_file_edit_handler(
     (StatusCode::OK, Json(GenericResponse { status: "ok".to_string() }))
 }
 
+/// POST /cursor_hook/before_shell_execution
+/// Checks shell command for sensitive data, blocks if found, logs tool call
+async fn before_shell_execution_handler(
+    State(state): State<CursorHooksState>,
+    Json(input): Json<BeforeShellExecutionInput>,
+) -> impl IntoResponse {
+    println!("============================================================");
+    println!("[CURSOR_HOOK] before_shell_execution CALLED");
+    println!("  generation_id: {}", input.generation_id);
+    println!("  command: {}", input.command);
+    println!("  cwd: {:?}", input.cwd);
+    println!("  sandbox: {:?}", input.sandbox);
+    println!("  user_email: {:?}", input.user_email);
+    println!("============================================================");
+
+    // Serialize full input for request_body
+    let request_body_json = serde_json::to_string(&input).unwrap_or_default();
+
+    // Build extra metadata
+    let metadata = CursorHookMetadata {
+        conversation_id: input.conversation_id.clone(),
+        generation_id: input.generation_id.clone(),
+        hook_event_name: input.hook_event_name.clone(),
+        user_email: input.user_email.clone(),
+        cursor_version: input.cursor_version.clone(),
+        workspace_roots: input.workspace_roots.clone(),
+        file_path: None,
+        thinking_word_count: None,
+    };
+    let metadata_json = serde_json::to_string(&metadata).ok();
+
+    let token_count = estimate_tokens(&input.command);
+
+    // Check DLP patterns on command (only if DLP is enabled)
+    let detections = if state.settings.dlp_enabled {
+        check_dlp_patterns(&input.command)
+    } else {
+        Vec::new()
+    };
+    let is_blocked = !detections.is_empty();
+
+    let (permission, user_message, agent_message) = if is_blocked {
+        let msg = format_detection_message(&detections);
+        (
+            "deny".to_string(),
+            Some(msg.clone()),
+            Some(format!(
+                "Shell command was blocked due to sensitive data detection."
+            )),
+        )
+    } else {
+        ("allow".to_string(), None, None)
+    };
+
+    // Build response
+    let response = BeforeShellExecutionResponse {
+        permission: permission.clone(),
+        user_message: user_message.clone(),
+        agent_message: agent_message.clone(),
+    };
+    let response_body_json = serde_json::to_string(&response).unwrap_or_default();
+
+    // Log to database
+    let response_status = if is_blocked { 403 } else { 200 };
+    let dlp_action = if is_blocked { DLP_ACTION_BLOCKED } else { DLP_ACTION_PASSED };
+
+    if let Ok(request_id) = state.db.log_cursor_hook_request(
+        &input.generation_id,
+        "CursorChat",
+        &input.model,
+        token_count,
+        0,
+        &request_body_json,
+        &response_body_json,
+        response_status,
+        metadata_json.as_deref(),
+        None,
+        None,
+        dlp_action,
+    ) {
+        println!("[CURSOR_HOOK] before_shell_execution - logged request_id: {}", request_id);
+
+        // Log DLP detections if any
+        if !detections.is_empty() {
+            let _ = state.db.log_dlp_detections(request_id, &detections);
+            println!("[CURSOR_HOOK] before_shell_execution - logged {} DLP detections", detections.len());
+        }
+
+        // Log as tool call (shell execution)
+        let tool_call = crate::requestresponsemetadata::ToolCall {
+            id: format!("shell-{}", input.generation_id),
+            name: "shell".to_string(),
+            input: serde_json::json!({
+                "command": input.command,
+                "cwd": input.cwd,
+                "sandbox": input.sandbox,
+            }),
+        };
+        let _ = state.db.log_tool_calls(request_id, &[tool_call]);
+        println!("[CURSOR_HOOK] before_shell_execution - logged tool call");
+    } else {
+        println!("[CURSOR_HOOK] before_shell_execution - FAILED to log request");
+    }
+
+    println!("[CURSOR_HOOK] before_shell_execution - returning response: {:?}", response);
+    (StatusCode::OK, Json(response))
+}
+
+/// POST /cursor_hook/before_mcp_execution
+/// Checks MCP tool arguments for sensitive data, blocks if found, logs tool call
+async fn before_mcp_execution_handler(
+    State(state): State<CursorHooksState>,
+    Json(input): Json<BeforeMCPExecutionInput>,
+) -> impl IntoResponse {
+    println!("============================================================");
+    println!("[CURSOR_HOOK] before_mcp_execution CALLED");
+    println!("  generation_id: {}", input.generation_id);
+    println!("  server_name: {}", input.server_name);
+    println!("  tool_name: {}", input.tool_name);
+    println!("  arguments: {:?}", input.arguments);
+    println!("  user_email: {:?}", input.user_email);
+    println!("============================================================");
+
+    // Serialize full input for request_body
+    let request_body_json = serde_json::to_string(&input).unwrap_or_default();
+
+    // Build extra metadata
+    let metadata = CursorHookMetadata {
+        conversation_id: input.conversation_id.clone(),
+        generation_id: input.generation_id.clone(),
+        hook_event_name: input.hook_event_name.clone(),
+        user_email: input.user_email.clone(),
+        cursor_version: input.cursor_version.clone(),
+        workspace_roots: input.workspace_roots.clone(),
+        file_path: None,
+        thinking_word_count: None,
+    };
+    let metadata_json = serde_json::to_string(&metadata).ok();
+
+    // Convert arguments to string for token counting and DLP check
+    let args_str = input
+        .arguments
+        .as_ref()
+        .map(|v| serde_json::to_string(v).unwrap_or_default())
+        .unwrap_or_default();
+    let token_count = estimate_tokens(&args_str) + estimate_tokens(&input.tool_name);
+
+    // Check DLP patterns on arguments (only if DLP is enabled)
+    let detections = if state.settings.dlp_enabled {
+        check_dlp_patterns(&args_str)
+    } else {
+        Vec::new()
+    };
+    let is_blocked = !detections.is_empty();
+
+    let (permission, user_message, agent_message) = if is_blocked {
+        let msg = format_detection_message(&detections);
+        (
+            "deny".to_string(),
+            Some(msg.clone()),
+            Some(format!(
+                "MCP tool '{}' on server '{}' was blocked due to sensitive data detection.",
+                input.tool_name, input.server_name
+            )),
+        )
+    } else {
+        ("allow".to_string(), None, None)
+    };
+
+    // Build response
+    let response = BeforeMCPExecutionResponse {
+        permission: permission.clone(),
+        user_message: user_message.clone(),
+        agent_message: agent_message.clone(),
+    };
+    let response_body_json = serde_json::to_string(&response).unwrap_or_default();
+
+    // Log to database
+    let response_status = if is_blocked { 403 } else { 200 };
+    let dlp_action = if is_blocked { DLP_ACTION_BLOCKED } else { DLP_ACTION_PASSED };
+
+    if let Ok(request_id) = state.db.log_cursor_hook_request(
+        &input.generation_id,
+        "CursorChat",
+        &input.model,
+        token_count,
+        0,
+        &request_body_json,
+        &response_body_json,
+        response_status,
+        metadata_json.as_deref(),
+        None,
+        None,
+        dlp_action,
+    ) {
+        println!("[CURSOR_HOOK] before_mcp_execution - logged request_id: {}", request_id);
+
+        // Log DLP detections if any
+        if !detections.is_empty() {
+            let _ = state.db.log_dlp_detections(request_id, &detections);
+            println!("[CURSOR_HOOK] before_mcp_execution - logged {} DLP detections", detections.len());
+        }
+
+        // Log as tool call (MCP execution)
+        let tool_call = crate::requestresponsemetadata::ToolCall {
+            id: format!("mcp-{}-{}", input.server_name, input.generation_id),
+            name: format!("mcp:{}:{}", input.server_name, input.tool_name),
+            input: input.arguments.clone().unwrap_or(serde_json::json!({})),
+        };
+        let _ = state.db.log_tool_calls(request_id, &[tool_call]);
+        println!("[CURSOR_HOOK] before_mcp_execution - logged tool call");
+    } else {
+        println!("[CURSOR_HOOK] before_mcp_execution - FAILED to log request");
+    }
+
+    println!("[CURSOR_HOOK] before_mcp_execution - returning response: {:?}", response);
+    (StatusCode::OK, Json(response))
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -932,6 +1210,8 @@ pub fn create_cursor_hooks_router(
         .route("/before_submit_prompt", post(before_submit_prompt_handler))
         .route("/before_read_file", post(before_read_file_handler))
         .route("/before_tab_file_read", post(before_tab_file_read_handler))
+        .route("/before_shell_execution", post(before_shell_execution_handler))
+        .route("/before_mcp_execution", post(before_mcp_execution_handler))
         .route("/after_agent_response", post(after_agent_response_handler))
         .route("/after_agent_thought", post(after_agent_thought_handler))
         .route("/after_tab_file_edit", post(after_tab_file_edit_handler))

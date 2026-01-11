@@ -47,6 +47,12 @@ case "$HOOK_NAME" in
     "beforeTabFileRead")
         ENDPOINT="before_tab_file_read"
         ;;
+    "beforeShellExecution")
+        ENDPOINT="before_shell_execution"
+        ;;
+    "beforeMCPExecution")
+        ENDPOINT="before_mcp_execution"
+        ;;
     "afterAgentResponse")
         ENDPOINT="after_agent_response"
         ;;
@@ -75,7 +81,7 @@ if [ -z "$RESPONSE" ]; then
         "beforeSubmitPrompt")
             echo '{{"continue": true}}'
             ;;
-        "beforeReadFile"|"beforeTabFileRead")
+        "beforeReadFile"|"beforeTabFileRead"|"beforeShellExecution"|"beforeMCPExecution")
             echo '{{"permission": "allow"}}'
             ;;
         *)
@@ -109,6 +115,8 @@ const QUILR_HOOKS: &[&str] = &[
     "beforeSubmitPrompt",
     "beforeReadFile",
     "beforeTabFileRead",
+    "beforeShellExecution",
+    "beforeMCPExecution",
     "afterAgentResponse",
     "afterAgentThought",
     "afterTabFileEdit",
