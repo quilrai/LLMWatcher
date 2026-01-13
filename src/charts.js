@@ -276,6 +276,69 @@ export function createToolInsightsChart(container, insights) {
     }
   });
 
+  // Custom plugin to render labels on chart segments
+  const labelPlugin = {
+    id: 'segmentLabels',
+    afterDraw: (chart) => {
+      const ctx = chart.ctx;
+      ctx.save();
+
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        const meta = chart.getDatasetMeta(datasetIndex);
+
+        meta.data.forEach((arc, index) => {
+          // Get arc properties
+          const { x, y, startAngle, endAngle, innerRadius, outerRadius } = arc.getProps(['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius']);
+
+          // Calculate the angle span and mid angle
+          const angleSpan = endAngle - startAngle;
+          const midAngle = startAngle + angleSpan / 2;
+
+          // Skip very small segments (less than ~15 degrees)
+          if (angleSpan < 0.26) return;
+
+          // Calculate label position (middle of the arc)
+          const midRadius = (innerRadius + outerRadius) / 2;
+          const labelX = x + Math.cos(midAngle) * midRadius;
+          const labelY = y + Math.sin(midAngle) * midRadius;
+
+          // Get the label text
+          let label;
+          if (datasetIndex === 1) {
+            // Inner ring - tools
+            label = innerLabels[index];
+          } else {
+            // Outer ring - targets
+            label = outerLabels[index];
+          }
+
+          // Calculate available arc length for text
+          const arcLength = angleSpan * midRadius;
+          const fontSize = datasetIndex === 1 ? 11 : 9;
+
+          // Truncate label if needed
+          ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+          const maxChars = Math.floor(arcLength / (fontSize * 0.6));
+          if (label.length > maxChars && maxChars > 3) {
+            label = label.substring(0, maxChars - 2) + '..';
+          } else if (maxChars <= 3) {
+            return; // Skip if too small
+          }
+
+          // Draw label
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+          ctx.shadowBlur = 3;
+          ctx.fillText(label, labelX, labelY);
+        });
+      });
+
+      ctx.restore();
+    }
+  };
+
   const newCharts = { ...charts };
   newCharts.toolInsights = new Chart(ctx, {
     type: 'doughnut',
@@ -342,7 +405,8 @@ export function createToolInsightsChart(container, insights) {
           }
         }
       }
-    }
+    },
+    plugins: [labelPlugin]
   });
   setCharts(newCharts);
 }
