@@ -17,6 +17,8 @@ import { initSettings } from './settings.js';
 import { initBackends } from './backends.js';
 import { initHowTo } from './howto.js';
 
+const { openUrl } = window.__TAURI__.opener;
+
 // Initialize app
 window.addEventListener('DOMContentLoaded', () => {
   // Initialize Lucide icons
@@ -64,5 +66,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelector('[data-tab="logs"]').addEventListener('click', () => {
     loadMessageLogs();
     loadLogsModels();
+  });
+
+  // GitHub links
+  document.getElementById('starGithub').addEventListener('click', () => {
+    openUrl('https://github.com/quilrai/local-agent-gateway');
+  });
+  document.getElementById('reportIssue').addEventListener('click', () => {
+    openUrl('https://github.com/quilrai/local-agent-gateway/issues');
   });
 });

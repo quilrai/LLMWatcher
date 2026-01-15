@@ -28,9 +28,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #2d2d44;
+      margin-bottom: 8px;
     }
 
     .title {
@@ -103,8 +101,9 @@
     .actions {
       display: flex;
       gap: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #2d2d44;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #2d2d44;
     }
 
     .btn {
@@ -155,10 +154,41 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+
+    .links {
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      margin-top: 12px;
+      border-top: 1px solid #2d2d44;
+    }
+
+    .btn-link {
+      flex: 1;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      background: #2d2d44;
+      color: #aaa;
+    }
+
+    .btn-link:hover {
+      background: #3d3d5c;
+      color: #ccc;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="actions">
+      <button class="btn btn-primary" id="showApp">Open App</button>
+      <button class="btn btn-secondary" id="quitApp">Quit</button>
+    </div>
+
     <div class="header">
       <span class="title">Last 24 Hours</span>
     </div>
@@ -170,15 +200,16 @@
       </div>
     </div>
 
-    <div class="actions">
-      <button class="btn btn-primary" id="showApp">Open App</button>
-      <button class="btn btn-secondary" id="quitApp">Quit</button>
+    <div class="links">
+      <button class="btn-link" id="starGithub">Star on GitHub</button>
+      <button class="btn-link" id="reportIssue">Report Issue</button>
     </div>
   </div>
 
   <script>
     const { invoke } = window.__TAURI__.core;
     const { getCurrentWindow } = window.__TAURI__.window;
+    const { openUrl } = window.__TAURI__.opener;
 
     function formatNumber(num) {
       if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -233,6 +264,14 @@
 
     document.getElementById('quitApp').addEventListener('click', async () => {
       await invoke('quit_app');
+    });
+
+    document.getElementById('starGithub').addEventListener('click', async () => {
+      await openUrl('https://github.com/quilrai/local-agent-gateway');
+    });
+
+    document.getElementById('reportIssue').addEventListener('click', async () => {
+      await openUrl('https://github.com/quilrai/local-agent-gateway/issues');
     });
 
     // Close popup when clicking outside (losing focus)
