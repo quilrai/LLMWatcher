@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-macos:
-    runs-on: macos-13
+  build-macos-apple-silicon:
+    runs-on: macos-14
 
     steps:
       - name: Checkout repository
@@ -44,6 +44,13 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
         run: npm run tauri build
+
+      - name: Rename DMG for Apple Silicon
+        run: |
+          cd src-tauri/target/release/bundle/dmg
+          for f in *.dmg; do
+            mv "$f" "${f%.dmg}-apple-silicon.dmg"
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
