@@ -1,6 +1,6 @@
 # Quilr local agent gateway
 
-https://quilrbusiness.github.io/local-agent-gateway/
+https://quilrai.github.io/local-agent-gateway/
 
 Desktop App for monitoring and controlling llm requests (with focus on coding agents)
 
