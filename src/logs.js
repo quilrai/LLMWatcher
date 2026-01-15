@@ -183,15 +183,15 @@ async function copyLogData(index, tab) {
   let data;
 
   if (tab === 'data') {
-    data = {
-      request: JSON.parse(log.request_body || '{}'),
-      response: JSON.parse(log.response_body || '{}')
-    };
+    let request, response;
+    try { request = JSON.parse(log.request_body || '{}'); } catch { request = log.request_body; }
+    try { response = JSON.parse(log.response_body || '{}'); } catch { response = log.response_body; }
+    data = { request, response };
   } else if (tab === 'headers') {
-    data = {
-      request: JSON.parse(log.request_headers || '{}'),
-      response: JSON.parse(log.response_headers || '{}')
-    };
+    let request, response;
+    try { request = JSON.parse(log.request_headers || '{}'); } catch { request = log.request_headers; }
+    try { response = JSON.parse(log.response_headers || '{}'); } catch { response = log.response_headers; }
+    data = { request, response };
   } else if (tab === 'dlp') {
     try {
       const detections = await invoke('get_dlp_detections_for_request', { requestId: log.id });
