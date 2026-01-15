@@ -4,6 +4,62 @@ use crate::database::{get_port_from_db, open_connection, save_port_to_db, DLP_AC
 use crate::{PROXY_PORT, PROXY_STATUS, RESTART_SENDER, ProxyStatus};
 use serde::Serialize;
 
+// ========================================================================
+// Tray Menu Stats (Last 24h per backend)
+// ========================================================================
+
+#[derive(Serialize, Clone)]
+pub struct BackendStats {
+    pub backend: String,
+    pub request_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_tokens: i64, // cache_read + cache_creation combined
+}
+
+#[derive(Serialize)]
+pub struct TrayStats {
+    pub backends: Vec<BackendStats>,
+}
+
+#[tauri::command]
+pub fn get_tray_stats() -> Result<TrayStats, String> {
+    let conn = open_connection().map_err(|e| e.to_string())?;
+
+    // Last 24 hours
+    let cutoff_ts = get_cutoff_timestamp(24);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT backend,
+                    COUNT(*) as request_count,
+                    COALESCE(SUM(input_tokens), 0) as input_tokens,
+                    COALESCE(SUM(output_tokens), 0) as output_tokens,
+                    COALESCE(SUM(cache_read_tokens), 0) + COALESCE(SUM(cache_creation_tokens), 0) as cache_tokens
+             FROM requests
+             WHERE timestamp >= ?1
+             GROUP BY backend
+             ORDER BY request_count DESC"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let backends: Vec<BackendStats> = stmt
+        .query_map([&cutoff_ts], |row| {
+            Ok(BackendStats {
+                backend: row.get(0)?,
+                request_count: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_tokens: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(TrayStats { backends })
+}
+
 #[derive(Serialize)]
 pub struct ModelStats {
     model: String,

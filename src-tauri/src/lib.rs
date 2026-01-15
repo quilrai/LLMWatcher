@@ -18,9 +18,8 @@ use database::get_port_from_db;
 use dlp_pattern_config::DEFAULT_PORT;
 use std::sync::{Arc, Mutex};
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    AppHandle, Manager, WindowEvent,
+    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
+    AppHandle, Manager, WindowEvent, PhysicalPosition,
 };
 use tokio::sync::watch;
 
@@ -44,6 +43,18 @@ fn hide_window(app: &AppHandle) {
         #[cfg(target_os = "macos")]
         let _ = app.set_activation_policy(ActivationPolicy::Accessory);
     }
+}
+
+// Command to show main window (called from tray popup)
+#[tauri::command]
+fn show_main_window(app: AppHandle) {
+    show_window(&app);
+}
+
+// Command to quit app (called from tray popup)
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 // Proxy status enum
@@ -91,44 +102,73 @@ pub fn run() {
                 rt.block_on(proxy::start_proxy_server(app_handle));
             });
 
-            // Create tray menu items
-            let show_item = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-            let hide_item = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-
-            // Build the tray menu
-            let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
-
-            // Build the tray icon
+            // Build tray icon with click handler to toggle popup
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        show_window(app);
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(popup) = app.get_webview_window("tray_popup") {
+                            // Toggle: if visible, hide; otherwise show
+                            if popup.is_visible().unwrap_or(false) {
+                                let _ = popup.hide();
+                                return;
+                            }
+
+                            // Get tray icon position and compute popup position
+                            if let Ok(Some(tray_rect)) = tray.rect() {
+                                let popup_width = 320.0;
+
+                                // Convert position and size to physical values (scale factor 1.0)
+                                let pos = tray_rect.position.to_physical::<f64>(1.0);
+                                let size = tray_rect.size.to_physical::<f64>(1.0);
+
+                                // Position popup below tray icon, centered
+                                let x = pos.x - (popup_width / 2.0) + (size.width / 2.0);
+                                let y = pos.y + size.height + 4.0;
+
+                                let _ = popup.set_position(PhysicalPosition::new(x as i32, y as i32));
+                            }
+
+                            // Reload the page to fetch fresh stats
+                            let _ = popup.eval("loadStats()");
+                            let _ = popup.show();
+                            let _ = popup.set_focus();
+                        }
                     }
-                    "hide" => {
-                        hide_window(app);
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
                 })
                 .build(app)?;
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Prevent the window from closing, hide it instead
-                api.prevent_close();
-                let app = window.app_handle();
-                hide_window(&app);
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    // Prevent the window from closing, hide it instead
+                    api.prevent_close();
+                    let app = window.app_handle();
+                    hide_window(&app);
+                }
+                WindowEvent::Focused(false) => {
+                    // Hide tray popup when it loses focus (click outside)
+                    if window.label() == "tray_popup" {
+                        let _ = window.hide();
+                    }
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
+            // Tray popup commands
+            show_main_window,
+            quit_app,
+            commands::get_tray_stats,
+            // Main app commands
             commands::greet,
             commands::get_dashboard_stats,
             commands::get_backends,
