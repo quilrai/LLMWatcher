@@ -3,7 +3,7 @@
 use crate::backends::custom::CustomBackendSettings;
 use crate::backends::{Backend, ClaudeBackend, CodexBackend, CustomBackend};
 use crate::cursor_hooks::create_cursor_hooks_router;
-use crate::database::{get_dlp_action_from_db, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED, DLP_ACTION_RATELIMITED, DLP_ACTION_NOTIFY_RATELIMIT};
+use crate::database::{get_dlp_action_from_db, get_last_notification_time, set_last_notification_time, Database, DLP_ACTION_BLOCKED, DLP_ACTION_PASSED, DLP_ACTION_REDACTED, DLP_ACTION_RATELIMITED, DLP_ACTION_NOTIFY_RATELIMIT};
 use crate::dlp::{apply_dlp_redaction, apply_dlp_unredaction, DlpDetection};
 use crate::dlp_pattern_config::get_db_path;
 use crate::requestresponsemetadata::ResponseMetadata;
@@ -148,6 +148,7 @@ struct ProxyState {
     db: Database,
     backend: Arc<dyn Backend>,
     rate_limiter: RateLimiter,
+    app_handle: AppHandle,
 }
 
 async fn health_handler() -> impl IntoResponse {
@@ -289,6 +290,28 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> impl In
             } else {
                 // Notify mode: allow request but flag for logging
                 notify_ratelimit = true;
+
+                // Send notification if more than 1 minute has passed since last notification
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let last_notification = get_last_notification_time().unwrap_or(0);
+                if now - last_notification >= 60 {
+                    let _ = set_last_notification_time(now);
+                    let backend_name = backend.name().to_string();
+                    let app_handle = state.app_handle.clone();
+                    // Send notification in background to not block the request
+                    tokio::spawn(async move {
+                        use tauri_plugin_notification::NotificationExt;
+                        let _ = app_handle
+                            .notification()
+                            .builder()
+                            .title("LLMwatcher")
+                            .body(format!("{} hitting rate limits", backend_name))
+                            .show();
+                    });
+                }
             }
         }
     }
@@ -719,11 +742,13 @@ pub async fn start_proxy_server(app_handle: AppHandle) {
             db: db.clone(),
             backend: claude_backend,
             rate_limiter: rate_limiter.clone(),
+            app_handle: app_handle.clone(),
         };
         let codex_state = ProxyState {
             db: db.clone(),
             backend: codex_backend,
             rate_limiter: rate_limiter.clone(),
+            app_handle: app_handle.clone(),
         };
 
         // Create routers for each backend
@@ -799,6 +824,7 @@ pub async fn start_proxy_server(app_handle: AppHandle) {
                 db: db.clone(),
                 backend: custom_backend,
                 rate_limiter: rate_limiter.clone(),
+                app_handle: app_handle.clone(),
             };
             let custom_router = Router::new()
                 .fallback(proxy_handler)

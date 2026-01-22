@@ -9,6 +9,7 @@
     "core:tray:default",
     "dialog:default",
     "fs:default",
-    "fs:allow-write-text-file"
+    "fs:allow-write-text-file",
+    "notification:default"
   ]
 }

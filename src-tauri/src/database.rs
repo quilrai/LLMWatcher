@@ -1306,4 +1306,31 @@ pub fn save_dlp_action_to_db(action: &str) -> Result<(), String> {
     Ok(())
 }
 
+// Notification rate limiting helpers
 
+pub fn get_last_notification_time() -> Option<u64> {
+    let conn = match open_connection() {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'last_notification_time'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|v| v.parse().ok())
+}
+
+pub fn set_last_notification_time(timestamp: u64) -> Result<(), String> {
+    let conn = open_connection().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_notification_time', ?1)",
+        rusqlite::params![timestamp.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
