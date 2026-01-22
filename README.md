@@ -6,6 +6,8 @@
 
 Desktop App for monitoring and controlling llm requests (with focus on coding agents)
 
+![LLMWatcher screenshot](screenshots/home.png)
+
 **Fully local (on-device), desktop app for**
 - block or get notified on high request or token usage by agents
 - searchable complete history for LLM requests by agents
