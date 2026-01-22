@@ -738,6 +738,11 @@ pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
     let (env_var, route) = get_tool_env_config(&tool)?;
     let base_url = format!("http://localhost:{}{}", port, route);
 
+    // Codex uses function wrapper instead of global env var
+    if tool == "codex" {
+        return set_codex_function(shell, &base_url);
+    }
+
     match shell.as_str() {
         "fish" => {
             // Fish: use set -Ux for universal export (persists automatically)
@@ -800,9 +805,109 @@ pub fn set_shell_env(shell: String, tool: String) -> Result<String, String> {
     }
 }
 
+// Set codex as a shell function (not global env var)
+fn set_codex_function(shell: String, base_url: &str) -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
+
+    match shell.as_str() {
+        "fish" => {
+            // Fish: create function file
+            let func_dir = format!("{}/.config/fish/functions", home);
+            let func_path = format!("{}/codex.fish", func_dir);
+            let func_content = format!(
+                "function codex\n    set -lx OPENAI_BASE_URL \"{}\"\n    command codex $argv\nend\n",
+                base_url
+            );
+
+            std::fs::create_dir_all(&func_dir)
+                .map_err(|e| format!("Failed to create fish functions dir: {}", e))?;
+            std::fs::write(&func_path, func_content)
+                .map_err(|e| format!("Failed to write codex.fish: {}", e))?;
+
+            Ok("codex function installed for Fish".to_string())
+        }
+        "bash" => {
+            let rc_path = format!("{}/.bashrc", home);
+            let func_lines = format!(
+                "codex() {{\n    OPENAI_BASE_URL=\"{}\" command codex \"$@\"\n}}",
+                base_url
+            );
+            update_codex_function(&rc_path, &func_lines)?;
+            Ok("codex function added to ~/.bashrc. Run 'source ~/.bashrc' or restart your terminal.".to_string())
+        }
+        "zsh" => {
+            let rc_path = format!("{}/.zshrc", home);
+            let func_lines = format!(
+                "codex() {{\n    OPENAI_BASE_URL=\"{}\" command codex \"$@\"\n}}",
+                base_url
+            );
+            update_codex_function(&rc_path, &func_lines)?;
+            Ok("codex function added to ~/.zshrc. Run 'source ~/.zshrc' or restart your terminal.".to_string())
+        }
+        _ => Err(format!("Unknown shell: {}", shell)),
+    }
+}
+
+// Add/update codex function in shell config
+fn update_codex_function(path: &str, func_lines: &str) -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let mut new_content = String::new();
+    let mut in_func = false;
+    let mut found = false;
+
+    for line in content.lines() {
+        if line.trim().starts_with("codex()") || line.trim() == "codex ()" {
+            in_func = true;
+            found = true;
+            new_content.push_str("# LLMwatcher\n");
+            new_content.push_str(func_lines);
+            new_content.push('\n');
+            continue;
+        }
+        if in_func {
+            if line.trim() == "}" {
+                in_func = false;
+            }
+            continue;
+        }
+        // Skip old LLMwatcher comment if it precedes codex function
+        if line.trim() == "# LLMwatcher" {
+            continue;
+        }
+        new_content.push_str(line);
+        new_content.push('\n');
+    }
+
+    if !found {
+        new_content.push_str("\n# LLMwatcher\n");
+        new_content.push_str(func_lines);
+        new_content.push('\n');
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open {}: {}", path, e))?;
+
+    file.write_all(new_content.as_bytes())
+        .map_err(|e| format!("Failed to write: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn check_shell_env(shell: String, tool: String) -> Result<bool, String> {
     let (env_var, _) = get_tool_env_config(&tool)?;
+
+    // Codex uses function wrapper
+    if tool == "codex" {
+        return check_codex_function(shell);
+    }
 
     match shell.as_str() {
         "fish" => {
@@ -832,6 +937,38 @@ pub fn check_shell_env(shell: String, tool: String) -> Result<bool, String> {
     }
 }
 
+// Check if codex function exists
+fn check_codex_function(shell: String) -> Result<bool, String> {
+    let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
+
+    match shell.as_str() {
+        "fish" => {
+            let func_path = format!("{}/.config/fish/functions/codex.fish", home);
+            Ok(std::path::Path::new(&func_path).exists())
+        }
+        "bash" => {
+            let rc_path = format!("{}/.bashrc", home);
+            Ok(check_codex_func_in_config(&rc_path))
+        }
+        "zsh" => {
+            let rc_path = format!("{}/.zshrc", home);
+            Ok(check_codex_func_in_config(&rc_path))
+        }
+        _ => Err(format!("Unknown shell: {}", shell)),
+    }
+}
+
+fn check_codex_func_in_config(path: &str) -> bool {
+    if let Ok(content) = std::fs::read_to_string(path) {
+        content.lines().any(|line| {
+            let trimmed = line.trim();
+            (trimmed.starts_with("codex()") || trimmed == "codex ()") && !trimmed.starts_with('#')
+        })
+    } else {
+        false
+    }
+}
+
 // Check if env var is in config file
 fn check_env_in_config(path: &str, env_var: &str) -> bool {
     if let Ok(content) = std::fs::read_to_string(path) {
@@ -848,6 +985,11 @@ fn check_env_in_config(path: &str, env_var: &str) -> bool {
 #[tauri::command]
 pub fn remove_shell_env(shell: String, tool: String) -> Result<String, String> {
     let (env_var, _) = get_tool_env_config(&tool)?;
+
+    // Codex uses function wrapper
+    if tool == "codex" {
+        return remove_codex_function(shell);
+    }
 
     match shell.as_str() {
         "fish" => {
@@ -903,6 +1045,86 @@ pub fn remove_shell_env(shell: String, tool: String) -> Result<String, String> {
         }
         _ => Err(format!("Unknown shell: {}", shell)),
     }
+}
+
+// Remove codex function
+fn remove_codex_function(shell: String) -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
+
+    match shell.as_str() {
+        "fish" => {
+            let func_path = format!("{}/.config/fish/functions/codex.fish", home);
+            if std::path::Path::new(&func_path).exists() {
+                std::fs::remove_file(&func_path)
+                    .map_err(|e| format!("Failed to remove codex.fish: {}", e))?;
+            }
+            Ok("codex function removed from Fish".to_string())
+        }
+        "bash" => {
+            let rc_path = format!("{}/.bashrc", home);
+            remove_codex_func_from_config(&rc_path)?;
+            Ok("codex function removed from ~/.bashrc. Restart your terminal.".to_string())
+        }
+        "zsh" => {
+            let rc_path = format!("{}/.zshrc", home);
+            remove_codex_func_from_config(&rc_path)?;
+            Ok("codex function removed from ~/.zshrc. Restart your terminal.".to_string())
+        }
+        _ => Err(format!("Unknown shell: {}", shell)),
+    }
+}
+
+fn remove_codex_func_from_config(path: &str) -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let mut new_content = String::new();
+    let mut in_func = false;
+    let mut skip_comment = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track LLMwatcher comment that might precede function
+        if trimmed == "# LLMwatcher" {
+            skip_comment = true;
+            continue;
+        }
+
+        if trimmed.starts_with("codex()") || trimmed == "codex ()" {
+            in_func = true;
+            skip_comment = false;
+            continue;
+        }
+
+        if in_func {
+            if trimmed == "}" {
+                in_func = false;
+            }
+            continue;
+        }
+
+        // If we skipped comment but next line wasn't the function, add it back
+        if skip_comment {
+            new_content.push_str("# LLMwatcher\n");
+            skip_comment = false;
+        }
+
+        new_content.push_str(line);
+        new_content.push('\n');
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open {}: {}", path, e))?;
+
+    file.write_all(new_content.as_bytes())
+        .map_err(|e| format!("Failed to write: {}", e))?;
+
+    Ok(())
 }
 
 // Remove env var from config file
@@ -1237,4 +1459,113 @@ pub fn get_tool_call_insights(time_range: String, backend: String) -> Result<Too
     tools.truncate(8); // Top 8 tools
 
     Ok(ToolInsights { tools })
+}
+
+// ========================================================================
+// Claude Code Settings Commands
+// ========================================================================
+
+/// Get the path to Claude Code settings.json
+fn get_claude_settings_path() -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
+    Ok(format!("{}/.claude/settings.json", home))
+}
+
+/// Read Claude Code settings.json, creating it if it doesn't exist
+fn read_claude_settings() -> Result<serde_json::Value, String> {
+    let path = get_claude_settings_path()?;
+
+    if std::path::Path::new(&path).exists() {
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read settings.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse settings.json: {}", e))
+    } else {
+        // Return empty object if file doesn't exist
+        Ok(serde_json::json!({}))
+    }
+}
+
+/// Write Claude Code settings.json
+fn write_claude_settings(settings: &serde_json::Value) -> Result<(), String> {
+    let path = get_claude_settings_path()?;
+    let home = std::env::var("HOME").map_err(|_| "Could not get HOME directory")?;
+    let claude_dir = format!("{}/.claude", home);
+
+    // Create .claude directory if it doesn't exist
+    if !std::path::Path::new(&claude_dir).exists() {
+        std::fs::create_dir_all(&claude_dir)
+            .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+    }
+
+    let content = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn check_claude_code_settings() -> Result<bool, String> {
+    let settings = read_claude_settings()?;
+
+    // Check if env.ANTHROPIC_BASE_URL exists
+    if let Some(env) = settings.get("env") {
+        if let Some(base_url) = env.get("ANTHROPIC_BASE_URL") {
+            return Ok(base_url.as_str().is_some());
+        }
+    }
+
+    Ok(false)
+}
+
+#[tauri::command]
+pub fn set_claude_code_settings() -> Result<String, String> {
+    let port = *PROXY_PORT.lock().unwrap();
+    let base_url = format!("http://localhost:{}/claude", port);
+
+    let mut settings = read_claude_settings()?;
+
+    // Ensure settings is an object
+    let obj = settings.as_object_mut()
+        .ok_or("settings.json is not a valid JSON object")?;
+
+    // Get or create the "env" object
+    if !obj.contains_key("env") {
+        obj.insert("env".to_string(), serde_json::json!({}));
+    }
+
+    let env = obj.get_mut("env")
+        .and_then(|v| v.as_object_mut())
+        .ok_or("Failed to access env object")?;
+
+    // Set ANTHROPIC_BASE_URL
+    env.insert("ANTHROPIC_BASE_URL".to_string(), serde_json::json!(base_url));
+
+    write_claude_settings(&settings)?;
+
+    Ok(format!("ANTHROPIC_BASE_URL set in ~/.claude/settings.json"))
+}
+
+#[tauri::command]
+pub fn remove_claude_code_settings() -> Result<String, String> {
+    let mut settings = read_claude_settings()?;
+
+    // Remove ANTHROPIC_BASE_URL from env if it exists
+    if let Some(obj) = settings.as_object_mut() {
+        if let Some(env) = obj.get_mut("env").and_then(|v| v.as_object_mut()) {
+            env.remove("ANTHROPIC_BASE_URL");
+
+            // If env is now empty, remove it entirely
+            if env.is_empty() {
+                obj.remove("env");
+            }
+        }
+    }
+
+    write_claude_settings(&settings)?;
+
+    Ok(format!("ANTHROPIC_BASE_URL removed from ~/.claude/settings.json"))
 }

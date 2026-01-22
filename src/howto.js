@@ -8,36 +8,34 @@ function getToolInstructions(tool) {
     'claude-code': {
       title: 'Claude Code CLI',
       content: `
-        <p>Run Claude Code with the proxy inline:</p>
-        <code>ANTHROPIC_BASE_URL="http://localhost:${port}/claude" claude</code>
+        <p>Configure Claude Code to use this proxy by updating its global settings.</p>
 
-        <p style="margin-top: 24px;"><strong>Or set globally:</strong></p>
-
-        <div class="shell-tabs">
-          <button class="shell-tab active" data-shell="bash">Bash</button>
-          <button class="shell-tab" data-shell="zsh">Zsh</button>
-          <button class="shell-tab" data-shell="fish">Fish</button>
+        <div class="claude-code-settings-section">
+          <div class="claude-code-settings-status">
+            <span class="status-indicator" id="claude-code-status-indicator"></span>
+            <span id="claude-code-status-text">Checking status...</span>
+          </div>
+          <button id="claude-code-settings-btn" class="btn btn-primary claude-code-settings-btn" disabled>
+            Install for Claude Code
+          </button>
         </div>
 
-        <div class="shell-tab-content active" data-shell="bash">
-          <p class="shell-config-path">~/.bashrc</p>
-          <code>export ANTHROPIC_BASE_URL="http://localhost:${port}/claude"</code>
-          <button class="btn btn-primary shell-action-btn" data-shell="bash" data-action="set">Set</button>
+        <div id="claude-code-action-status" class="shell-set-status"></div>
+
+        <div class="claude-code-info" style="margin-top: 24px;">
+          <h4>What this does:</h4>
+          <ul>
+            <li>Sets <code>ANTHROPIC_BASE_URL</code> in <code>~/.claude/settings.json</code></li>
+            <li>All Claude Code sessions will route through the proxy at <code>http://localhost:${port}/claude</code></li>
+            <li>No need to restart Claude Code - changes take effect immediately</li>
+          </ul>
         </div>
 
-        <div class="shell-tab-content" data-shell="zsh">
-          <p class="shell-config-path">~/.zshrc</p>
-          <code>export ANTHROPIC_BASE_URL="http://localhost:${port}/claude"</code>
-          <button class="btn btn-primary shell-action-btn" data-shell="zsh" data-action="set">Set</button>
+        <div class="claude-code-info" style="margin-top: 16px;">
+          <h4>Manual setup:</h4>
+          <p>Alternatively, run Claude Code with the proxy inline:</p>
+          <code>ANTHROPIC_BASE_URL="http://localhost:${port}/claude" claude</code>
         </div>
-
-        <div class="shell-tab-content" data-shell="fish">
-          <p class="shell-config-path">Universal variable (persists automatically)</p>
-          <code>set -Ux ANTHROPIC_BASE_URL "http://localhost:${port}/claude"</code>
-          <button class="btn btn-primary shell-action-btn" data-shell="fish" data-action="set">Set</button>
-        </div>
-
-        <div id="shell-set-status" class="shell-set-status"></div>
       `
     },
     'cursor': {
@@ -86,7 +84,8 @@ function getToolInstructions(tool) {
         <p>Run Codex CLI with the proxy inline:</p>
         <code>OPENAI_BASE_URL="http://localhost:${port}/codex" codex</code>
 
-        <p style="margin-top: 24px;"><strong>Or set globally:</strong></p>
+        <p style="margin-top: 24px;"><strong>Or install a shell function wrapper:</strong></p>
+        <p class="howto-note">This creates a <code>codex</code> function that sets the proxy URL only when running codex, not globally.</p>
 
         <div class="shell-tabs">
           <button class="shell-tab active" data-shell="bash">Bash</button>
@@ -96,19 +95,19 @@ function getToolInstructions(tool) {
 
         <div class="shell-tab-content active" data-shell="bash">
           <p class="shell-config-path">~/.bashrc</p>
-          <code>export OPENAI_BASE_URL="http://localhost:${port}/codex"</code>
+          <code>codex() { OPENAI_BASE_URL="http://localhost:${port}/codex" command codex "$@"; }</code>
           <button class="btn btn-primary shell-action-btn" data-shell="bash" data-action="set">Set</button>
         </div>
 
         <div class="shell-tab-content" data-shell="zsh">
           <p class="shell-config-path">~/.zshrc</p>
-          <code>export OPENAI_BASE_URL="http://localhost:${port}/codex"</code>
+          <code>codex() { OPENAI_BASE_URL="http://localhost:${port}/codex" command codex "$@"; }</code>
           <button class="btn btn-primary shell-action-btn" data-shell="zsh" data-action="set">Set</button>
         </div>
 
         <div class="shell-tab-content" data-shell="fish">
-          <p class="shell-config-path">Universal variable (persists automatically)</p>
-          <code>set -Ux OPENAI_BASE_URL "http://localhost:${port}/codex"</code>
+          <p class="shell-config-path">~/.config/fish/functions/codex.fish</p>
+          <code>function codex; set -lx OPENAI_BASE_URL "http://localhost:${port}/codex"; command codex $argv; end</code>
           <button class="btn btn-primary shell-action-btn" data-shell="fish" data-action="set">Set</button>
         </div>
 
@@ -228,6 +227,90 @@ async function handleShellAction(btn) {
       btn.classList.remove('btn-error');
       btn.disabled = false;
       updateButtonState(btn, action === 'remove'); // Restore original state
+    }, 3000);
+  }
+}
+
+// Check Claude Code settings status
+async function checkClaudeCodeSettingsStatus() {
+  const statusIndicator = document.getElementById('claude-code-status-indicator');
+  const statusText = document.getElementById('claude-code-status-text');
+  const btn = document.getElementById('claude-code-settings-btn');
+
+  if (!statusIndicator || !statusText || !btn) return;
+
+  try {
+    const isInstalled = await invoke('check_claude_code_settings');
+
+    if (isInstalled) {
+      statusIndicator.className = 'status-indicator installed';
+      statusText.textContent = 'Configured';
+      btn.textContent = 'Remove for Claude Code';
+      btn.dataset.action = 'remove';
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-danger');
+    } else {
+      statusIndicator.className = 'status-indicator not-installed';
+      statusText.textContent = 'Not configured';
+      btn.textContent = 'Install for Claude Code';
+      btn.dataset.action = 'install';
+      btn.classList.remove('btn-danger');
+      btn.classList.add('btn-primary');
+    }
+    btn.disabled = false;
+  } catch (error) {
+    statusIndicator.className = 'status-indicator error';
+    statusText.textContent = 'Error checking status';
+    btn.disabled = true;
+    console.error('Failed to check Claude Code settings status:', error);
+  }
+}
+
+// Handle Claude Code settings install/remove
+async function handleClaudeCodeSettingsAction(btn) {
+  const action = btn.dataset.action;
+  const statusDiv = document.getElementById('claude-code-action-status');
+
+  btn.disabled = true;
+  btn.textContent = action === 'install' ? 'Installing...' : 'Removing...';
+
+  try {
+    let result;
+    if (action === 'install') {
+      result = await invoke('set_claude_code_settings');
+    } else {
+      result = await invoke('remove_claude_code_settings');
+    }
+
+    // Show success
+    btn.textContent = 'Done!';
+    btn.classList.remove('btn-primary', 'btn-danger');
+    btn.classList.add('btn-success');
+
+    if (statusDiv) {
+      statusDiv.textContent = result;
+      statusDiv.className = 'shell-set-status show success';
+    }
+
+    // Update status after success
+    setTimeout(async () => {
+      btn.classList.remove('btn-success');
+      await checkClaudeCodeSettingsStatus();
+    }, 1500);
+  } catch (error) {
+    btn.textContent = 'Failed';
+    btn.classList.remove('btn-primary', 'btn-danger');
+    btn.classList.add('btn-error');
+
+    if (statusDiv) {
+      statusDiv.textContent = error;
+      statusDiv.className = 'shell-set-status show error';
+    }
+
+    // Reset button after 3 seconds
+    setTimeout(async () => {
+      btn.classList.remove('btn-error');
+      await checkClaudeCodeSettingsStatus();
     }, 3000);
   }
 }
@@ -357,10 +440,20 @@ async function showToolInstructions(tool) {
     });
   });
 
-  // Check and update button states for tools with shell buttons
-  if (tool === 'claude-code' || tool === 'codex') {
+  // Check and update button states for tools with shell buttons (codex only)
+  if (tool === 'codex') {
     currentTool = tool;
     await updateShellButtonStates(tool);
+  }
+
+  // Handle Claude Code settings
+  if (tool === 'claude-code') {
+    await checkClaudeCodeSettingsStatus();
+
+    const claudeCodeBtn = document.getElementById('claude-code-settings-btn');
+    if (claudeCodeBtn) {
+      claudeCodeBtn.addEventListener('click', () => handleClaudeCodeSettingsAction(claudeCodeBtn));
+    }
   }
 
   // Handle Cursor hooks

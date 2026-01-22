@@ -200,6 +200,10 @@ pub fn run() {
             commands::install_cursor_hooks,
             commands::uninstall_cursor_hooks,
             commands::check_cursor_hooks_installed,
+            // Claude Code settings commands
+            commands::check_claude_code_settings,
+            commands::set_claude_code_settings,
+            commands::remove_claude_code_settings,
             // Custom backends commands
             commands::get_custom_backends,
             commands::add_custom_backend,

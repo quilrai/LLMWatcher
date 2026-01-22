@@ -11,6 +11,23 @@
     background: #0f0f1a;
   }
 
+  /* Custom Scrollbars - Dark Mode */
+  ::-webkit-scrollbar-track {
+    background: #1a1a2e;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3a3a5e;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4a4a6e;
+  }
+
+  * {
+    scrollbar-color: #3a3a5e #1a1a2e;
+  }
+
   /* Filters & Buttons */
   .filter-select {
     background: #1a1a2e;
@@ -502,6 +519,15 @@
     color: #888;
   }
 
+  .howto-note {
+    color: #888;
+  }
+
+  .howto-note code {
+    background: #1a1a2e;
+    color: #e8e8e8;
+  }
+
   .howto-tool-btn {
     background: #1a1a2e;
     border-color: #2a2a3e;
@@ -597,6 +623,38 @@
   }
 
   .cursor-info code {
+    background: #1a1a2e;
+    color: #e8e8e8;
+  }
+
+  /* Claude Code Settings Section */
+  .claude-code-settings-section {
+    background: #12121f;
+  }
+
+  .claude-code-settings-status {
+    color: #aaa;
+  }
+
+  #claude-code-status-text {
+    color: #e8e8e8;
+  }
+
+  /* Claude Code Info */
+  .claude-code-info {
+    background: #12121f;
+  }
+
+  .claude-code-info h4 {
+    color: #e8e8e8;
+  }
+
+  .claude-code-info li,
+  .claude-code-info p {
+    color: #aaa;
+  }
+
+  .claude-code-info code {
     background: #1a1a2e;
     color: #e8e8e8;
   }
