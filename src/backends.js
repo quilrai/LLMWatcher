@@ -96,6 +96,9 @@ function renderBackends(backends) {
     const rateBadge = settings.rate_limit_requests > 0
       ? `<span class="backend-setting-badge rate-limit">${settings.rate_limit_requests}/${settings.rate_limit_minutes}min</span>`
       : '<span class="backend-setting-badge no-rate-limit">No Rate Limit</span>';
+    const tokenBadge = settings.max_tokens_in_a_request > 0
+      ? `<span class="backend-setting-badge token-limit">${settings.max_tokens_in_a_request} tokens (${settings.action_for_max_tokens_in_a_request})</span>`
+      : '<span class="backend-setting-badge no-token-limit">No Token Limit</span>';
 
     return `
     <div class="backend-item ${backend.enabled ? '' : 'disabled'}" data-id="${backend.id}">
@@ -118,6 +121,7 @@ function renderBackends(backends) {
         <div class="backend-settings-summary">
           ${dlpBadge}
           ${rateBadge}
+          ${tokenBadge}
         </div>
       </div>
       <div class="backend-actions">
@@ -327,6 +331,9 @@ function renderPredefinedBackends(backends) {
     const rateBadge = settings.rate_limit_requests > 0
       ? `<span class="backend-setting-badge rate-limit">${settings.rate_limit_requests}/${settings.rate_limit_minutes}min</span>`
       : '<span class="backend-setting-badge no-rate-limit">No Rate Limit</span>';
+    const tokenBadge = settings.max_tokens_in_a_request > 0
+      ? `<span class="backend-setting-badge token-limit">${settings.max_tokens_in_a_request} tokens (${settings.action_for_max_tokens_in_a_request})</span>`
+      : '<span class="backend-setting-badge no-token-limit">No Token Limit</span>';
 
     // cursor-hooks doesn't have a proxy URL
     const proxyUrlHtml = backend.name === 'cursor-hooks'
@@ -353,6 +360,7 @@ function renderPredefinedBackends(backends) {
         <div class="backend-settings-summary">
           ${dlpBadge}
           ${rateBadge}
+          ${tokenBadge}
         </div>
       </div>
       <div class="backend-actions">

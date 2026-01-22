@@ -1112,6 +1112,16 @@
   color: #6b7280;
 }
 
+.backend-setting-badge.token-limit {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.backend-setting-badge.no-token-limit {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
 /* Backend Modal Form Elements */
 .form-divider {
   border-top: 1px solid #e5e7eb;

@@ -723,6 +723,16 @@
     color: #888;
   }
 
+  .backend-setting-badge.token-limit {
+    background: #422006;
+    color: #fcd34d;
+  }
+
+  .backend-setting-badge.no-token-limit {
+    background: #2a2a3e;
+    color: #888;
+  }
+
   .form-divider {
     border-top-color: #2a2a3e;
   }
